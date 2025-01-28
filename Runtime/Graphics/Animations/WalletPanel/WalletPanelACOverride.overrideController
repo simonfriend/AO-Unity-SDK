@@ -1,0 +1,15 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!221 &22100000
+AnimatorOverrideController:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_Name: WalletPanelACOverride
+  m_Controller: {fileID: 9100000, guid: 026d1754fd18547baa4fff1fa1f64352, type: 2}
+  m_Clips:
+  - m_OriginalClip: {fileID: 7400000, guid: 06f13e0253f947e488f422e979e96cff, type: 2}
+    m_OverrideClip: {fileID: 7400000, guid: c14d2dafd27d0ad48b580897d8750292, type: 2}
+  - m_OriginalClip: {fileID: 7400000, guid: e04c92d142ab09c43911046f7a098ead, type: 2}
+    m_OverrideClip: {fileID: 7400000, guid: 87f19913190fdf34aad2427a69c96146, type: 2}

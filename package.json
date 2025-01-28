@@ -1,0 +1,14 @@
+{
+  "name": "com.permaverse.ao-sdk",
+  "version": "0.1.0",
+  "displayName": "AO Permaverse SDK",
+  "description": "A Unity package enabling AO functionality",
+  "unity": "6000.0",
+  "dependencies": {
+    "com.unity.ugui": "2.0.0",
+    "com.unity.cloud.gltfast": "6.7.1"
+  },
+  "author": {
+    "name": "Permaverse"
+  }
+}
