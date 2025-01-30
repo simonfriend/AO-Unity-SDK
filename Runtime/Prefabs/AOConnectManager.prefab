@@ -44,18 +44,9 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 79b4d14cf3502264caf77edb55003bee, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  editorAddress: 6JBkDWwcdzwe7-8QllMqhYYgLALeVDcUdSb5vK16lG0
-  vouchReliableID: Ax_uXyLQBPZSQ15movzv9-O1mDo30khslqN64qD27Z8
+  editorAddress: 
   addressInfo:
     address: 
-    vouchValue: 0
-    vouchData:
-      XValue: 
-      Values: []
-      SubIDs: []
-      TotalValue: 
-      Status: 
-      ID: 
     allAddresses: []
     bazarProfileData:
       Assets: []
@@ -71,38 +62,10 @@ MonoBehaviour:
         DateUpdated: 0
         DisplayName: 
         DateCreated: 0
-  processes: []
-  availableLuaFiles:
-  - bot
-  - chatroom
-  - CREDutils
-  - staking
-  - token
-  - voting
-  autoFetchProcesses: 0
-  loadLuaFiles: 0
   checkNotifications: 1
   walletConnectedPanel: {fileID: 0}
   walletNotConnectedPanel: {fileID: 0}
-  loadingPanel: {fileID: 0}
   connectWalletButton: {fileID: 0}
   connectMetamaskButton: {fileID: 0}
-  processSettingsButton: {fileID: 0}
   activeWalletText: {fileID: 0}
-  aoConnectMessageHandler: {fileID: 0}
-  vouchMessageHandler: {fileID: 0}
   bazarMessageHandler: {fileID: 0}
-  minVouchValue: 1
-  vouchCheckCompleted: 0
-  processInfoButtonPrefab: {fileID: 9028110451226705921, guid: a9931cf8677c45240ab9288fe3bacc4c, type: 3}
-  processInfoButtons: []
-  processInfoButtonParent: {fileID: 0}
-  spawnNewProcessButton: {fileID: 0}
-  spawnNewProcessInputField: {fileID: 0}
-  inputFieldPid: {fileID: 0}
-  inputFieldData: {fileID: 0}
-  inputFieldAction: {fileID: 0}
-  sendMessageButton: {fileID: 0}
-  loadLuaElementPrefab: {fileID: 1665165628251218894, guid: f13463896c8f4c942b4f464660116b09, type: 3}
-  loadLuaElements: []
-  loadLuaElementParent: {fileID: 0}
