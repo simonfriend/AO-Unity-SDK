@@ -31,7 +31,7 @@ public class MyAOTest : MonoBehaviour
     
     private void OnCurrentAddressChanged()
     {
-        string currentAddress = AOConnectManager.main.CurrentAddress
+        string currentAddress = AOConnectManager.main.CurrentAddress;
         if (string.IsNullOrEmpty(currentAddress))
         {
             Debug.LogError("Address is null or empty!!");
@@ -62,13 +62,24 @@ Unity does not automatically detect WebGL templates from packages, so you need t
 2. Switch to WebGL in **File → Build Settings**.
 3. In **Project Settings → Player → WebGL → Resolution and Presentation**, select the **AOTemplate** WebGL Template.
 
-### **2. Build the Unity WebGL Project**
-1. Open **File → Build Settings** in Unity.
-2. Select **WebGL** as the target platform.
-3. Click **Switch Platform** (if not already selected).
-4. Click **Build** and choose an output folder (e.g., `WebGLBuild/`).
+### **2. Set Up WebGL Player Settings**
 
-### **3. Run the Build Script**
+Before building for WebGL, update these **Project Settings** to ensure compatibility:
+
+#### In **Project Settings → Player → WebGL → Other Settings**
+- **Color Space:** Change from **Linear** to **Gamma**.
+- **Texture Compression Format:** Set to **ASTC**.
+
+#### In **Project Settings → Player → WebGL → Publishing Settings**
+- **Compression Format:** **Disabled** (to avoid compatibility issues).
+- **Decompression Fallback:** **Enabled (true)** (for browser support).
+- **Target WebAssembly 2023:** **Enabled (true)**.
+
+### **3. Build the Unity WebGL Project**
+1. Open **File → Build Settings** in Unity.
+2. Click **Build** and choose an output folder (e.g., `WebGLBuild/`).
+
+### **4. Run the Build Script**
 After Unity has finished building:
 
 1. Open the **WebGLBuild/build-tools/** folder.
@@ -78,7 +89,7 @@ After Unity has finished building:
 
 This will **install dependencies, build the JavaScript file, and start a local server**.
 
-### **4. Test the WebGL Build**
+### **5. Test the WebGL Build**
 Once complete, open:
 ```
 http://localhost:8000
