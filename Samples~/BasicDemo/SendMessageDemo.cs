@@ -25,8 +25,8 @@ namespace Permaverse.AO
                 sendMessageButton.interactable = false;
             }
 
-            sendMessageButton?.onClick.AddListener(() => SendCustomMessage(MessageHandler.NetworkMethod.Web3));
-            sendDryrunButton?.onClick.AddListener(() => SendCustomMessage(MessageHandler.NetworkMethod.Web2));
+            sendMessageButton?.onClick.AddListener(() => SendCustomMessage(MessageHandler.NetworkMethod.Message));
+            sendDryrunButton?.onClick.AddListener(() => SendCustomMessage(MessageHandler.NetworkMethod.Dryrun));
         }
 
         public void SendCustomMessage(MessageHandler.NetworkMethod networkMethod)
@@ -36,7 +36,7 @@ namespace Permaverse.AO
             tags.Add(actionTag);
 
             messageHandler.SendRequest(inputFieldPid.text, tags, OnMessageResult, inputFieldData.text, networkMethod);
-            responseText.text = $"Sending {(networkMethod == MessageHandler.NetworkMethod.Web3 ? "message" : "dryrun")} to {inputFieldPid.text} with Action: {inputFieldAction.text} and Data: {inputFieldData.text}";
+            responseText.text = $"Sending {(networkMethod == MessageHandler.NetworkMethod.Message ? "message" : "dryrun")} to {inputFieldPid.text} with Action: {inputFieldAction.text} and Data: {inputFieldData.text}";
         }
 
         public void OnMessageResult(bool result, NodeCU nodeCU)
