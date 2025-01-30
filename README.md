@@ -26,24 +26,26 @@ It includes:
 
 ## Installation
 
+In Unity, go to **Window → Package Manager** → **+** → **“Add package from git URL…”** → Paste:
+```
+https://github.com/simonfriend/AO-Unity-SDK.git
+```
+and click **Add**.
+
+**Alternative**: 
+
 1. Open your Unity project’s `Packages/manifest.json` file in a text editor.
-2. Add this line to the `"dependencies"` section (adjust the Git URL/tag to your actual repository path and version):
+2. Add this line to the `"dependencies"` section (you can target a specific release by appending #tag at the end of the url):
 
    ```json
    {
      "dependencies": {
-       "com.permaverse.ao-sdk": "https://github.com/simonfriend/AO-Unity-SDK.git#v0.1.0"
+       "com.permaverse.ao-sdk": "https://github.com/simonfriend/AO-Unity-SDK.git"
      }
    }
    ```
 
 3. Save `manifest.json` and return to Unity. Unity will download the AO SDK and any required dependencies automatically.
-
-**Alternative**: In Unity, go to **Window → Package Manager** → **+** → **“Add package from git URL…”** → Paste:
-```
-https://github.com/simonfriend/AO-Unity-SDK.git#v0.1.0
-```
-and click **Add**.
 
 ---
 
