@@ -47,7 +47,7 @@ namespace Permaverse.AO
 			SendPaginatedRequest(pid, tags, callback, currentPageIndex + 1);
 		}
 
-		public void SendPaginatedRequest(string pid, List<Tag> tags, Action<bool, NodeCU> callback, int pageIndex, bool enqueue = false, NetworkMethod method = NetworkMethod.Web2)
+		public void SendPaginatedRequest(string pid, List<Tag> tags, Action<bool, NodeCU> callback, int pageIndex, bool enqueue = false, NetworkMethod method = NetworkMethod.Dryrun)
 		{
 			this.pid = pid;
 			this.callback = callback;

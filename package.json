@@ -14,7 +14,7 @@
   "samples": [
     {
       "displayName": "Basic Demo Scene",
-      "description": "A basic demo showing how to use AOConnectManager and MessageHandler to connect wallet, send messages and dryruns and get the results.",
+      "description": "A basic demo showing how to use AOConnectManager and MessageHandler to connect wallet, send messages/dryruns and get the results.",
       "path": "Samples~/BasicDemo"
     }
   ]

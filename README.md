@@ -1,4 +1,3 @@
-
 # Permaverse AO Unity SDK
 
 **Permaverse AO Unity SDK** is a Unity package that provides tooling and scripts to integrate and interact with AO infrastructure from Unity.
@@ -13,7 +12,7 @@ It includes:
 
 - **AOConnectManager**: Handles connecting, messaging, and other AO functionalities.
 - **MessageHandler**: Sends AO messages, performs dry runs, and retrieves results directly in Unity.
-- **AssetManager**: Imports custom assets (e.g., `.gltf` models) from Arweave into your Unity app.
+- **GLTFAssetManager**: Imports custom `.gltf` and `.glb` assets from Arweave into your Unity app.
 - **WebGL**: Includes a custom WebGL template and direct JavaScript interop.
 
 ---
@@ -54,7 +53,7 @@ After installation, you can:
 
 1. **Use the AOConnectManager** in your scene.
 2. Try the **BasicDemo** scene for a quick start. You can install sample content from the **Package Manager** UI. Look under **Permaverse AO Unity SDK** → **Samples** and click “Import” to bring a demo scene into your `Assets/` folder.
-3. Use `MessageHandler` to start to use AO as back-end to create amazing fully on-chain dApps.
+3. Use `MessageHandler` to start to use AO as a back-end to create fully on-chain dApps.
 
 ### Namespaces
 
@@ -77,7 +76,7 @@ public class ExampleAOUsage : MonoBehaviour
 
 ## Documentation
 
-For detailed usage, see:
+For detailed usage and troubleshooting, see:
 - [Getting Started](GettingStarted.md)
 
 ---

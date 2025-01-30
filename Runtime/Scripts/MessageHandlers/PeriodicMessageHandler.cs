@@ -11,7 +11,7 @@ namespace Permaverse.AO
 		public float periodicInterval = 10f;
 		protected IEnumerator periodicRequestCoroutine;
 
-		public virtual void SetPeriodicRequest(string pid, List<Tag> tags, Action<bool, NodeCU> callback, string data = null, NetworkMethod method = NetworkMethod.Web2)
+		public virtual void SetPeriodicRequest(string pid, List<Tag> tags, Action<bool, NodeCU> callback, string data = null, NetworkMethod method = NetworkMethod.Dryrun)
 		{
 			if (periodicRequestCoroutine != null)
 			{
@@ -31,7 +31,7 @@ namespace Permaverse.AO
 			}
 		}
 
-		protected virtual IEnumerator PeriodicRequest(string pid, List<Tag> tags, Action<bool, NodeCU> callback, string data = null, NetworkMethod method = NetworkMethod.Web2)
+		protected virtual IEnumerator PeriodicRequest(string pid, List<Tag> tags, Action<bool, NodeCU> callback, string data = null, NetworkMethod method = NetworkMethod.Dryrun)
 		{
 			while (true)
 			{

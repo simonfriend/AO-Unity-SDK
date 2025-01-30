@@ -41,8 +41,8 @@ namespace Permaverse.AO
 
 		public enum NetworkMethod
 		{
-			Web2,
-			Web3
+			Dryrun,
+			Message
 		}
 
 		private void Start()
@@ -74,25 +74,25 @@ namespace Permaverse.AO
 			}
 		}
 
-		public virtual void SendRequest(string pid, List<Tag> tags, Action<bool, NodeCU> callback, string data = null, NetworkMethod method = NetworkMethod.Web2)
+		public virtual void SendRequest(string pid, List<Tag> tags, Action<bool, NodeCU> callback, string data = null, NetworkMethod method = NetworkMethod.Dryrun)
 		{
 			StartCoroutine(SendRequestCoroutine(pid, tags, callback, data, method));
 		}
 
-		public virtual void SendRequest(string pid, List<Tag> tags, Action<bool, NodeCU> callback, float delay, string data = null, NetworkMethod method = NetworkMethod.Web2)
+		public virtual void SendRequest(string pid, List<Tag> tags, Action<bool, NodeCU> callback, float delay, string data = null, NetworkMethod method = NetworkMethod.Dryrun)
 		{
 			StartCoroutine(SendRequestCoroutineDelayed(pid, tags, callback, delay, data, method));
 		}
 
-		protected virtual IEnumerator SendRequestCoroutineDelayed(string pid, List<Tag> tags, Action<bool, NodeCU> callback, float delay, string data = "", NetworkMethod method = NetworkMethod.Web2)
+		protected virtual IEnumerator SendRequestCoroutineDelayed(string pid, List<Tag> tags, Action<bool, NodeCU> callback, float delay, string data = "", NetworkMethod method = NetworkMethod.Dryrun)
 		{
 			yield return new WaitForSeconds(delay);
 			SendRequest(pid, tags, callback, data, method);
 		}
 
-		protected virtual IEnumerator SendRequestCoroutine(string pid, List<Tag> tags, Action<bool, NodeCU> callback, string data = "", NetworkMethod method = NetworkMethod.Web2)
+		protected virtual IEnumerator SendRequestCoroutine(string pid, List<Tag> tags, Action<bool, NodeCU> callback, string data = "", NetworkMethod method = NetworkMethod.Dryrun)
 		{
-			if (method == NetworkMethod.Web2)
+			if (method == NetworkMethod.Dryrun)
 			{
 				yield return StartCoroutine(SendHttpPostRequest(pid, tags, callback, data));
 			}
@@ -140,7 +140,7 @@ namespace Permaverse.AO
 
 				if (resendIfResultFalse)
 				{
-					SendRequest(pid, tags, callback, delay: resendDelays[resendIndex], method: NetworkMethod.Web2);
+					SendRequest(pid, tags, callback, delay: resendDelays[resendIndex], method: NetworkMethod.Dryrun);
 
 					if (increaseResendDelay && resendIndex + 1 < resendDelays.Count)
 					{
@@ -163,7 +163,7 @@ namespace Permaverse.AO
 
 				if (ShouldResend(jsonResponse))
 				{
-					SendRequest(pid, tags, callback, delay: resendDelays[resendIndex], method: NetworkMethod.Web2);
+					SendRequest(pid, tags, callback, delay: resendDelays[resendIndex], method: NetworkMethod.Dryrun);
 
 					if (increaseResendDelay && resendIndex + 1 < resendDelays.Count)
 					{
@@ -227,7 +227,7 @@ namespace Permaverse.AO
 
 				if (resendIfResultFalse)
 				{
-					SendRequest(pid, tags, callback, delay: resendDelays[resendIndex], data, method: NetworkMethod.Web3);
+					SendRequest(pid, tags, callback, delay: resendDelays[resendIndex], data, method: NetworkMethod.Message);
 
 					if (increaseResendDelay && resendIndex + 1 < resendDelays.Count)
 					{
