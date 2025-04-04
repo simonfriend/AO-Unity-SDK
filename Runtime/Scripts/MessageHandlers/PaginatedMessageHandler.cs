@@ -47,7 +47,7 @@ namespace Permaverse.AO
 			SendPaginatedRequest(pid, tags, callback, currentPageIndex + 1);
 		}
 
-		public void SendPaginatedRequest(string pid, List<Tag> tags, Action<bool, NodeCU> callback, int pageIndex, bool enqueue = false, NetworkMethod method = NetworkMethod.Dryrun)
+		public void SendPaginatedRequest(string pid, List<Tag> tags, Action<bool, NodeCU> callback, int pageIndex, bool enqueue = false, NetworkMethod method = NetworkMethod.Dryrun, bool useMainWallet = false)
 		{
 			this.pid = pid;
 			this.callback = callback;
@@ -61,11 +61,11 @@ namespace Permaverse.AO
 
 			if (enqueue)
 			{
-				EnqueueRequest(pid, completeTags, OnCallback, method: method);
+				EnqueueRequest(pid, completeTags, OnCallback, method: method, useMainWallet: useMainWallet);
 			}
 			else
 			{
-				SendRequest(pid, completeTags, OnCallback, method: method);
+				SendRequest(pid, completeTags, OnCallback, method: method, useMainWallet: useMainWallet);
 			}
 		}
 

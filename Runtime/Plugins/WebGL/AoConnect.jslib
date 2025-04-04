@@ -9,15 +9,16 @@ mergeInto(LibraryManager.library, {
         UnityAO.sendMessage(pid, data, action);
     },
 
-    SendMessageCustomCallbackJS: function (pidPtr, dataPtr, actionPtr, idPtr, objectPtr, methodPtr) {
+    SendMessageCustomCallbackJS: function (pidPtr, dataPtr, actionPtr, idPtr, objectPtr, methodPtr, useMainWalletPtr) {
         var pid = UTF8ToString(pidPtr);
         var data = UTF8ToString(dataPtr);
         var action = UTF8ToString(actionPtr);
         var id = UTF8ToString(idPtr);
         var object = UTF8ToString(objectPtr);
         var method = UTF8ToString(methodPtr);
+        var useMainWallet = UTF8ToString(useMainWalletPtr);
 
-        UnityAO.sendMessageCustomCallback(pid, data, action, id, object, method);
+        UnityAO.sendMessageCustomCallback(pid, data, action, id, object, method, useMainWallet);
     },
 
     TransferTokenJS: function (pidPtr, quantityPtr, recipientPtr) {

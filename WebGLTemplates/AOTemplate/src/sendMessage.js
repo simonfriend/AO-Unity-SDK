@@ -1,16 +1,28 @@
 import { connect } from '@permaweb/aoconnect'
-import { createDataItemSigner } from './connectWallet'
+import { createDataItemSignerMain, createDataItemSignerSession, getConnectedChain } from './connectWallet'
 
-export async function sendMessageCustomCallback(pid, data, tagsStr, id, objectCallback, methodCallback) {
+export async function sendMessageCustomCallback(pid, data, tagsStr, id, objectCallback, methodCallback, useMainWallet) {
     var tags = JSON.parse(tagsStr);
     let json;
 
     try {
+        // Select the appropriate signer function
+        let signerFunction;
+        console.log("useMainWallet", useMainWallet);
+        if (useMainWallet == 'true' || getConnectedChain() == 'arweave') {
+            signerFunction = createDataItemSignerMain();
+        } else {
+            signerFunction = createDataItemSignerSession();
+        }
+
         const messageId = await connect().message({
             process: pid,
-            signer: createDataItemSigner(),
+            signer: signerFunction,
             tags: tags,
-            data: data
+            data: data,
+            anchor: Math.round(Date.now() / 1000)
+            .toString()
+            .padStart(32, Math.floor(Math.random() * 10).toString())
         });
 
         const result = await connect().result({
@@ -40,7 +52,7 @@ export async function sendMessageCustomCallback(pid, data, tagsStr, id, objectCa
 export async function transferToken(pid, quantity, recipient) {
     const messageId = await connect().message({
         process: pid,
-        signer: createDataItemSigner(),
+        signer: createDataItemSignerMain(),
         tags: [{ name: 'Action', value: 'Transfer' }, { name: 'Quantity', value: quantity }, { name: 'Recipient', value: recipient }],
         data: ''
     });

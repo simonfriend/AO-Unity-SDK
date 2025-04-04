@@ -16,12 +16,13 @@ fi
 
 echo "🔄 Installing/updating dependencies..."
 npm install --save-dev esbuild
-npm install --save-dev @esbuild-plugins/node-globals-polyfill
-npm install --save-dev @esbuild-plugins/node-modules-polyfill
+npm install --save-dev esbuild-plugin-polyfill-node
 
-npm install --save @permaweb/aoconnect
-npm install --save arseeding-arbundles
+npm install --save @permaweb/aoconnect@0.0.54
+npm install --save @dha-team/arbundles
 npm install --save @ethersproject/providers
+npm install --save ethers
+npm install --save @ar.io/sdk
 
 echo "🔨 Running build script..."
 node build-tools/build-script.js  # Updated path to reflect new location

@@ -4,9 +4,6 @@ using System;
 using System.Collections;
 using System.Collections.Generic;
 using SimpleJSON;
-using System.Web;
-using System.Linq;
-using System.Text;
 
 namespace Permaverse.AO
 {
@@ -74,35 +71,35 @@ namespace Permaverse.AO
 			}
 		}
 
-		public virtual void SendRequest(string pid, List<Tag> tags, Action<bool, NodeCU> callback, string data = null, NetworkMethod method = NetworkMethod.Dryrun)
+		public virtual void SendRequest(string pid, List<Tag> tags, Action<bool, NodeCU> callback, string data = null, NetworkMethod method = NetworkMethod.Dryrun, bool useMainWallet = false)
 		{
-			StartCoroutine(SendRequestCoroutine(pid, tags, callback, data, method));
+			StartCoroutine(SendRequestCoroutine(pid, tags, callback, data, method, useMainWallet));
 		}
 
-		public virtual void SendRequest(string pid, List<Tag> tags, Action<bool, NodeCU> callback, float delay, string data = null, NetworkMethod method = NetworkMethod.Dryrun)
+		public virtual void SendRequest(string pid, List<Tag> tags, Action<bool, NodeCU> callback, float delay, string data = null, NetworkMethod method = NetworkMethod.Dryrun, bool useMainWallet = false)
 		{
-			StartCoroutine(SendRequestCoroutineDelayed(pid, tags, callback, delay, data, method));
+			StartCoroutine(SendRequestCoroutineDelayed(pid, tags, callback, delay, data, method, useMainWallet));
 		}
 
-		protected virtual IEnumerator SendRequestCoroutineDelayed(string pid, List<Tag> tags, Action<bool, NodeCU> callback, float delay, string data = "", NetworkMethod method = NetworkMethod.Dryrun)
+		protected virtual IEnumerator SendRequestCoroutineDelayed(string pid, List<Tag> tags, Action<bool, NodeCU> callback, float delay, string data = "", NetworkMethod method = NetworkMethod.Dryrun, bool useMainWallet = false)
 		{
 			yield return new WaitForSeconds(delay);
 			SendRequest(pid, tags, callback, data, method);
 		}
 
-		protected virtual IEnumerator SendRequestCoroutine(string pid, List<Tag> tags, Action<bool, NodeCU> callback, string data = "", NetworkMethod method = NetworkMethod.Dryrun)
+		protected virtual IEnumerator SendRequestCoroutine(string pid, List<Tag> tags, Action<bool, NodeCU> callback, string data = "", NetworkMethod method = NetworkMethod.Dryrun, bool useMainWallet = false)
 		{
 			if (method == NetworkMethod.Dryrun)
 			{
-				yield return StartCoroutine(SendHttpPostRequest(pid, tags, callback, data));
+				yield return StartCoroutine(SendHttpPostRequest(pid, tags, callback, data, useMainWallet));
 			}
 			else if (!Application.isEditor)
 			{
-				yield return StartCoroutine(SendMessageToProcess(pid, data, tags, callback));
+				yield return StartCoroutine(SendMessageToProcess(pid, data, tags, callback, useMainWallet));
 			}
 			else if (doWeb2IfInEditor)
 			{
-				yield return StartCoroutine(SendHttpPostRequest(pid, tags, callback, data));
+				yield return StartCoroutine(SendHttpPostRequest(pid, tags, callback, data, useMainWallet));
 			}
 			else
 			{
@@ -110,10 +107,19 @@ namespace Permaverse.AO
 			}
 		}
 
-		protected IEnumerator SendHttpPostRequest(string pid, List<Tag> tags, Action<bool, NodeCU> callback, string data = "")
+		protected IEnumerator SendHttpPostRequest(string pid, List<Tag> tags, Action<bool, NodeCU> callback, string data = "", bool useMainWallet = false)
 		{
 			string url = baseUrl + pid;
-			string ownerId = string.IsNullOrEmpty(AOConnectManager.main.CurrentAddress) ? "1234" : AOConnectManager.main.CurrentAddress;
+			string ownerId;
+			if (useMainWallet || string.IsNullOrEmpty(AOConnectManager.main.CurrentSessionAddress))
+			{
+				ownerId = string.IsNullOrEmpty(AOConnectManager.main.CurrentAddress) ? "1234" : AOConnectManager.main.CurrentAddress;
+			}
+			else
+			{
+				ownerId = AOConnectManager.main.CurrentSessionAddress;
+			}
+
 			string jsonBody = CreateJsonBody(pid, ownerId, tags, data);
 
 			if (showLogs)
@@ -140,7 +146,7 @@ namespace Permaverse.AO
 
 				if (resendIfResultFalse)
 				{
-					SendRequest(pid, tags, callback, delay: resendDelays[resendIndex], method: NetworkMethod.Dryrun);
+					SendRequest(pid, tags, callback, delay: resendDelays[resendIndex], method: NetworkMethod.Dryrun, useMainWallet: useMainWallet);
 
 					if (increaseResendDelay && resendIndex + 1 < resendDelays.Count)
 					{
@@ -178,16 +184,30 @@ namespace Permaverse.AO
 			}
 		}
 
-		protected IEnumerator SendMessageToProcess(string pid, string data, List<Tag> tags, Action<bool, NodeCU> callback)
+		protected IEnumerator SendMessageToProcess(string pid, string data, List<Tag> tags, Action<bool, NodeCU> callback, bool useMainWallet = false)
 		{
-			if (showLogs)
+			string ownerId;
+
+			if (useMainWallet || string.IsNullOrEmpty(AOConnectManager.main.CurrentSessionAddress))
 			{
-				Debug.Log($"[{gameObject.name}] Sending message");
+				ownerId = AOConnectManager.main.CurrentAddress;
+			}
+			else
+			{
+				ownerId = AOConnectManager.main.CurrentSessionAddress;
 			}
 
-			string currentAddress = AOConnectManager.main.CurrentAddress;
+			if (data == null)
+			{
+				data = "";
+			}
 
-			if (string.IsNullOrEmpty(currentAddress))
+			if (showLogs)
+			{
+				Debug.Log($"[{gameObject.name}] Sending message from {ownerId} to {pid} with data: {data}");
+			}
+
+			if (string.IsNullOrEmpty(ownerId))
 			{
 				Debug.LogError("Current address is null!!");
 				var jsonResponse = new NodeCU("{\"Error\":\"Current address is null!\"}");
@@ -198,7 +218,7 @@ namespace Permaverse.AO
 			requestsCount++;
 			string uniqueID = requestsCount.ToString();
 
-			results[uniqueID] = (false, string.Empty, currentAddress);
+			results[uniqueID] = (false, string.Empty, ownerId);
 
 			JSONArray tagsJsonArray = new JSONArray();
 			foreach (var tag in tags)
@@ -208,7 +228,7 @@ namespace Permaverse.AO
 
 			string tagsStr = tagsJsonArray.ToString();
 
-			AOConnectManager.main.SendMessageToProcess(pid, data, tagsStr, uniqueID, gameObject.name, "MessageCallback");
+			AOConnectManager.main.SendMessageToProcess(pid, data, tagsStr, uniqueID, gameObject.name, "MessageCallback", useMainWallet);
 
 			yield return new WaitUntil(() => results[uniqueID].Item1);
 
@@ -216,7 +236,18 @@ namespace Permaverse.AO
 
 			NodeCU networkResponse = new NodeCU(response);
 
-			if (savedAddress != AOConnectManager.main.CurrentAddress)
+			string currentOwnerId;
+
+			if (useMainWallet || string.IsNullOrEmpty(AOConnectManager.main.CurrentSessionAddress))
+			{
+				currentOwnerId = AOConnectManager.main.CurrentAddress;
+			}
+			else
+			{
+				currentOwnerId = AOConnectManager.main.CurrentSessionAddress;
+			}
+
+			if (savedAddress != currentOwnerId)
 			{
 				if (showLogs)
 				{
@@ -227,7 +258,7 @@ namespace Permaverse.AO
 
 				if (resendIfResultFalse)
 				{
-					SendRequest(pid, tags, callback, delay: resendDelays[resendIndex], data, method: NetworkMethod.Message);
+					SendRequest(pid, tags, callback, delay: resendDelays[resendIndex], data, method: NetworkMethod.Message, useMainWallet: useMainWallet);
 
 					if (increaseResendDelay && resendIndex + 1 < resendDelays.Count)
 					{
@@ -237,12 +268,25 @@ namespace Permaverse.AO
 				else
 				{
 					callback?.Invoke(false, networkResponse);
+					resendIndex = 0;
 				}
 			}
 			else
 			{
-				callback?.Invoke(networkResponse.IsSuccessful(), networkResponse);
-				resendIndex = 0;
+				if (!networkResponse.IsSuccessful() && resendIfResultFalse)
+				{
+					SendRequest(pid, tags, callback, delay: resendDelays[resendIndex], data, method: NetworkMethod.Message, useMainWallet: useMainWallet);
+
+					if (increaseResendDelay && resendIndex + 1 < resendDelays.Count)
+					{
+						resendIndex++;
+					}
+				}
+				else
+				{
+					callback?.Invoke(networkResponse.IsSuccessful(), networkResponse);
+					resendIndex = 0;
+				}
 			}
 
 			results.Remove(uniqueID);

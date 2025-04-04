@@ -21,11 +21,20 @@ namespace Permaverse.AO
 	}
 
 	[Serializable]
+	public class SessionKeyInfo
+	{
+		public string address;
+		public string mainWallet;
+		public string expiryDate;
+	}
+
+	[Serializable]
 	public class AddressInfo
 	{
 		public string address;
 		public List<string> allAddresses;
 		public BazarProfileData bazarProfileData;
+		public SessionKeyInfo sessionKeyInfo;
 
 		public AddressInfo(string wallet)
 		{
@@ -41,7 +50,8 @@ namespace Permaverse.AO
 		public string CurrentBazarID => addressInfo != null && addressInfo.bazarProfileData != null ? addressInfo.bazarProfileData.Profile.Id : null;
 		public BazarProfileData CurrentBazarProfileData => addressInfo != null && addressInfo.bazarProfileData != null ? addressInfo.bazarProfileData : null;
 		public List<string> CurrentAddresses => addressInfo != null && addressInfo.allAddresses != null && addressInfo.allAddresses.Count > 0 ? addressInfo.allAddresses : null;
-
+		public SessionKeyInfo CurrentSessionKeyInfo => addressInfo != null && addressInfo.sessionKeyInfo != null ? addressInfo.sessionKeyInfo : null;
+		public string CurrentSessionAddress => addressInfo != null && addressInfo.sessionKeyInfo != null ? addressInfo.sessionKeyInfo.address : null;
 		public Action OnCurrentAddressChange;
 
 		[SerializeField] private AddressInfo addressInfo;
@@ -61,7 +71,7 @@ namespace Permaverse.AO
 	
 
 		[DllImport("__Internal")]
-		private static extern void SendMessageCustomCallbackJS(string pid, string data, string tags, string id, string objectCallback, string methodCallback);
+		private static extern void SendMessageCustomCallbackJS(string pid, string data, string tags, string id, string objectCallback, string methodCallback, string useMainWallet);
 
 		[DllImport("__Internal")]
 		private static extern void ConnectWalletJS();
@@ -176,11 +186,12 @@ namespace Permaverse.AO
 			ConnectMetamaskJS();
 		}
 
-		public void SendMessageToProcess(string pid, string data, string tags, string id, string objectCallback = "AOConnectManager", string methodCallback = "MessageCallback")
+		public void SendMessageToProcess(string pid, string data, string tags, string id, string objectCallback = "AOConnectManager", string methodCallback = "MessageCallback", bool useMainWallet = false)
 		{
 			if (CurrentAddress != null)
 			{
-				SendMessageCustomCallbackJS(pid, data, tags, id, objectCallback, methodCallback);
+				string useMainWalletString = useMainWallet ? "true" : "false";
+				SendMessageCustomCallbackJS(pid, data, tags, id, objectCallback, methodCallback, useMainWalletString);
 			}
 		}
 
@@ -232,6 +243,8 @@ namespace Permaverse.AO
 				return;
 			}
 
+			Debug.Log("Wallet Data: " + walletData);
+
 			JSONNode address = JSON.Parse(walletData);
 
 			if (!address.HasKey("address"))
@@ -243,6 +256,11 @@ namespace Permaverse.AO
 
 			string wallet = address["address"];
 
+			if(AOUtils.IsEVMWallet(wallet))
+			{
+				wallet = wallet.ToLower();
+			}
+
 			AddressInfo info = new AddressInfo(wallet);
 
 			JSONArray addressesArray = address["addresses"].AsArray;
@@ -253,10 +271,29 @@ namespace Permaverse.AO
 			// Loop through the array and add each address to the list
 			foreach (JSONNode addressNode in addressesArray)
 			{
-				addressesList.Add(addressNode.Value);
+				string addressString = addressNode.Value;
+				if (AOUtils.IsEVMWallet(addressString))
+				{
+					addressString = addressString.ToLower();
+				}
+				addressesList.Add(addressString);
 			}
 
 			info.allAddresses = addressesList;
+
+			if(address.HasKey("sessionKey"))
+			{
+				SessionKeyInfo sessionKeyInfo = new SessionKeyInfo();
+				sessionKeyInfo.address = address["sessionKey"]["address"].Value.ToLower();
+				sessionKeyInfo.mainWallet = address["sessionKey"]["mainWallet"].Value.ToLower();
+				sessionKeyInfo.expiryDate = address["sessionKey"]["expiry"];
+
+				info.sessionKeyInfo = sessionKeyInfo;
+			}
+			else
+			{
+				Debug.Log("No session key info");
+			}
 
 			if (info.address != CurrentAddress)
 			{

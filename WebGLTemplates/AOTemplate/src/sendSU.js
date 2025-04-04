@@ -1,5 +1,5 @@
 // import { createDataItemSigner } from '@permaweb/aoconnect'
-import { getActiveAddress, createDataItemSigner, getArweaveSigner } from './connectWallet'
+import { createDataItemSignerMain, getArweaveSigner } from './connectWallet'
 // import WarpArBundles from 'warp-arbundles'
 // const { createData } = WarpArBundles;
 
@@ -15,7 +15,7 @@ export async function sendSU(url, target, owner, action, data/*, objectCallback,
         return false;
     }
 
-    const signer = createDataItemSigner(activeSigner)
+    const signer = createDataItemSignerMain(activeSigner)
 
     const tags = [
         // { name: 'Target', value: target },

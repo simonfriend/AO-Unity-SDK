@@ -1,19 +1,21 @@
-const path = require('path');
 const esbuild = require('esbuild');
-const nodeGlobalsPlugin = require('@esbuild-plugins/node-globals-polyfill');
-const nodeModulesPolyfill = require('@esbuild-plugins/node-modules-polyfill');
-
-// Resolve paths dynamically to ensure they work no matter where the script is run from
-const wrapperPath = path.resolve(__dirname, '../src/wrapper.js');
-const outputPath = path.resolve(__dirname, '../build.js');
-
-console.log("📂 Entry file:", wrapperPath);
-console.log("📂 Output file:", outputPath);
+const polyfillNode = require('esbuild-plugin-polyfill-node').polyfillNode;
+const path = require('path');
 
 esbuild.build({
-  entryPoints: [wrapperPath],
+  entryPoints: [path.join(__dirname, '../src/wrapper.js')],
   bundle: true,
-  outfile: outputPath,
+  outfile: path.join(__dirname, '../build.js'),
   format: 'esm',
-  plugins: [nodeGlobalsPlugin.default(), nodeModulesPolyfill.default()],
+  platform: 'browser', // specify browser platform
+  plugins: [
+    polyfillNode({
+      polyfills: {
+        crypto: true,
+        process: true,
+        fs: true,
+        buffer: true,
+      },
+    }),
+  ],
 }).catch(() => process.exit(1));

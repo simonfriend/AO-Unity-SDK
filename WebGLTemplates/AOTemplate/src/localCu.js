@@ -1,6 +1,7 @@
-import * as Comlink from "https://unpkg.com/comlink/dist/esm/comlink.mjs";
-
-const worker = Comlink.wrap(new Worker("worker.js"));
+//COMMENTED THIS SINCE WE ARE NOT USING THEM FOR THE MOMENT!! CAMMELLO
+// import * as Comlink from "https://unpkg.com/comlink/dist/esm/comlink.mjs";
+// const worker = Comlink.wrap(new Worker("worker.js"));
+const worker = "worker.js";
 const hardcodedProcessId = "sYJP_BK4fwXNl0rg8J_5gUWZfmAitoXh_GVleAyGFKg";
 // const hardcodedAopModuleTxId = "KQmGe8mHG8cV2Bx553ZVncaSf6JQZuHcfh9UwGfCmtw"; zV_TXVJ6YYzpnXazszcSzkLrJ1N1T-qHU4gYU0FLtu8
 const hardcodedModuleTxId = "BWgrjsYKFXLdlh6-zmV9AKkv-If4pemkVIHCetHSBDM";
