@@ -5,6 +5,7 @@ using System.Linq;
 using System.Web;
 using UnityEngine;
 using UnityEngine.Networking;
+using UnityEngine.SocialPlatforms;
 
 namespace Permaverse.AO
 {
@@ -17,6 +18,7 @@ namespace Permaverse.AO
 		public int resultsToKeep = 10;
 		public long initialFrom = -1;
 		public string baseUrl = "https://cu.ao-testnet.xyz/results/";
+		// public bool callbackInAscOrder = true;
 
 		public List<Results> lastResults;
 
@@ -95,7 +97,6 @@ namespace Permaverse.AO
 					if (initialFrom != -1)
 					{
 						parameters += $"&from={initialFrom}";
-
 					}
 				}
 				else
@@ -116,10 +117,17 @@ namespace Permaverse.AO
 					jsonResult = jsonRes;
 				};
 
+				float timeElapsed = 0f;
+				if (showLogs)
+				{
+					Debug.Log($"[{gameObject.name}] Sending request with url: {url}");
+				}
+
 				StartCoroutine(SendHttpPostRequest(url, callback));
 
 				while (!done)
 				{
+					timeElapsed += Time.deltaTime;
 					yield return null;
 				}
 
@@ -127,7 +135,7 @@ namespace Permaverse.AO
 				{
 					if (showLogs)
 					{
-						Debug.Log($"[{gameObject.name}] Sent request with url: {url} || Received Result: {jsonResult}");
+						Debug.Log($"[{gameObject.name}] Sent request with url: {url} || Received Result after {timeElapsed}s: {jsonResult}");
 					}
 
 					if (lastResults.Count == 0)
@@ -144,6 +152,13 @@ namespace Permaverse.AO
 
 					if (ResultsCallback != null)
 					{
+						// if(callbackInAscOrder)
+						// {
+						// 	// If we want results in ascending order, reverse the list
+							
+						// 	result.Edges.Reverse();
+						// }
+
 						ResultsCallback.Invoke(result);
 					}
 				}

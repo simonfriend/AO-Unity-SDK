@@ -15,13 +15,13 @@ namespace Permaverse.AO
 		protected bool isProcessing = false;
 		protected float lastRequestTime = 0f;
 
-		public override void SendRequest(string pid, List<Tag> tags, Action<bool, NodeCU> callback, string data = null, NetworkMethod method = NetworkMethod.Dryrun, bool useMainWallet = false)
+		public override void SendRequest(string pid, List<Tag> tags, Action<bool, NodeCU> callback, string data = null, NetworkMethod method = NetworkMethod.Dryrun, bool useMainWallet = false, WalletType walletType = WalletType.Default)
 		{
 			lastRequestTime = Time.time;
-			base.SendRequest(pid, tags, callback, data, method, useMainWallet);
+			base.SendRequest(pid, tags, callback, data, method, useMainWallet, walletType);
 		}
 
-		public virtual void EnqueueRequest(string pid, List<Tag> tags, Action<bool, NodeCU> callback, string data = null, NetworkMethod method = NetworkMethod.Dryrun, bool useMainWallet = false)
+		public virtual void EnqueueRequest(string pid, List<Tag> tags, Action<bool, NodeCU> callback, string data = null, NetworkMethod method = NetworkMethod.Dryrun, bool useMainWallet = false, WalletType walletType = WalletType.Default)
 		{
 			float timeSinceLastRequest = Time.time - lastRequestTime;
 
@@ -30,7 +30,7 @@ namespace Permaverse.AO
 				return;
 			}
 
-			requestQueue.Enqueue(SendRequestCoroutine(pid, tags, callback, data, method, useMainWallet));
+			requestQueue.Enqueue(SendRequestCoroutine(pid, tags, callback, data, method, useMainWallet, walletType));
 			if (!isProcessing)
 			{
 				StartCoroutine(ProcessQueue());

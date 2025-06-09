@@ -9,7 +9,7 @@ mergeInto(LibraryManager.library, {
         UnityAO.sendMessage(pid, data, action);
     },
 
-    SendMessageCustomCallbackJS: function (pidPtr, dataPtr, actionPtr, idPtr, objectPtr, methodPtr, useMainWalletPtr) {
+    SendMessageCustomCallbackJS: function (pidPtr, dataPtr, actionPtr, idPtr, objectPtr, methodPtr, useMainWalletPtr, chainPtr) {
         var pid = UTF8ToString(pidPtr);
         var data = UTF8ToString(dataPtr);
         var action = UTF8ToString(actionPtr);
@@ -17,8 +17,9 @@ mergeInto(LibraryManager.library, {
         var object = UTF8ToString(objectPtr);
         var method = UTF8ToString(methodPtr);
         var useMainWallet = UTF8ToString(useMainWalletPtr);
+        var chain = UTF8ToString(chainPtr);
 
-        UnityAO.sendMessageCustomCallback(pid, data, action, id, object, method, useMainWallet);
+        UnityAO.sendMessageCustomCallback(pid, data, action, id, object, method, useMainWallet, chain);
     },
 
     TransferTokenJS: function (pidPtr, quantityPtr, recipientPtr) {
@@ -79,6 +80,38 @@ mergeInto(LibraryManager.library, {
         var data = UTF8ToString(dataPtr);
 
         UnityAO.sendSU(url, pid, owner, action, data);
-    }
+    },
+
+    StakeEvmJS: function (pidPtr, amountPtr, walletPtr)
+    {
+        var pid = UTF8ToString(pidPtr);
+        var amount = UTF8ToString(amountPtr);
+        var wallet = UTF8ToString(walletPtr);
+
+        UnityAO.stake(pid, amount, wallet);
+    },
+
+    UnstakeEvmJS: function (pidPtr, amountPtr, walletPtr)
+    {
+        var pid = UTF8ToString(pidPtr);
+        var amount = UTF8ToString(amountPtr);
+        var wallet = UTF8ToString(walletPtr);
+
+        UnityAO.unstake(pid, amount, wallet);
+    },
+
+    GetStakedBalanceEvmJS: function (pidPtr)
+    {
+        var pid = UTF8ToString(pidPtr);
+
+        UnityAO.getStakedBalance(pid);
+    },
+
+    GetTokenBalanceEvmJS: function (pidPtr)
+    {
+        var pid = UTF8ToString(pidPtr);
+
+        UnityAO.getTokenBalance(pid);
+    },
 });
 

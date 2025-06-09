@@ -15,6 +15,8 @@ namespace Permaverse.AO
 		public bool hasNextPage = false;  // This should be updated based on the last fetched data
 		public int pageSize = 30;
 
+		public GameObject loadingIcon;
+
 		protected string pid;
 		protected List<Tag> tags;
 		protected Action<bool, NodeCU> callback;
@@ -43,6 +45,7 @@ namespace Permaverse.AO
 		private void LoadNextPage()
 		{
 			isLoading = true;
+			if (loadingIcon != null) loadingIcon.SetActive(true);
 			Debug.Log("Loading next page...");
 			SendPaginatedRequest(pid, tags, callback, currentPageIndex + 1);
 		}
@@ -54,10 +57,10 @@ namespace Permaverse.AO
 			this.tags = tags;
 
 			List<Tag> completeTags = new List<Tag>(this.tags)
-		{
-			new Tag("PageIndex", pageIndex.ToString()),
-			new Tag("PageSize", pageSize.ToString())
-		};
+			{
+				new Tag("PageIndex", pageIndex.ToString()),
+				new Tag("PageSize", pageSize.ToString())
+			};
 
 			if (enqueue)
 			{
@@ -84,6 +87,7 @@ namespace Permaverse.AO
 			}
 
 			isLoading = false;
+			if (loadingIcon != null) loadingIcon.SetActive(false);
 
 			callback.Invoke(result, response);
 		}

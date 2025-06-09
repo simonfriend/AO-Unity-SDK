@@ -71,35 +71,35 @@ namespace Permaverse.AO
 			}
 		}
 
-		public virtual void SendRequest(string pid, List<Tag> tags, Action<bool, NodeCU> callback, string data = null, NetworkMethod method = NetworkMethod.Dryrun, bool useMainWallet = false)
+		public virtual void SendRequest(string pid, List<Tag> tags, Action<bool, NodeCU> callback, string data = null, NetworkMethod method = NetworkMethod.Dryrun, bool useMainWallet = false, WalletType walletType = WalletType.Default)
 		{
-			StartCoroutine(SendRequestCoroutine(pid, tags, callback, data, method, useMainWallet));
+			StartCoroutine(SendRequestCoroutine(pid, tags, callback, data, method, useMainWallet, walletType));
 		}
 
-		public virtual void SendRequest(string pid, List<Tag> tags, Action<bool, NodeCU> callback, float delay, string data = null, NetworkMethod method = NetworkMethod.Dryrun, bool useMainWallet = false)
+		public virtual void SendRequest(string pid, List<Tag> tags, Action<bool, NodeCU> callback, float delay, string data = null, NetworkMethod method = NetworkMethod.Dryrun, bool useMainWallet = false, WalletType walletType = WalletType.Default)
 		{
-			StartCoroutine(SendRequestCoroutineDelayed(pid, tags, callback, delay, data, method, useMainWallet));
+			StartCoroutine(SendRequestCoroutineDelayed(pid, tags, callback, delay, data, method, useMainWallet, walletType));
 		}
 
-		protected virtual IEnumerator SendRequestCoroutineDelayed(string pid, List<Tag> tags, Action<bool, NodeCU> callback, float delay, string data = "", NetworkMethod method = NetworkMethod.Dryrun, bool useMainWallet = false)
+		protected virtual IEnumerator SendRequestCoroutineDelayed(string pid, List<Tag> tags, Action<bool, NodeCU> callback, float delay, string data = "", NetworkMethod method = NetworkMethod.Dryrun, bool useMainWallet = false, WalletType walletType = WalletType.Default)
 		{
 			yield return new WaitForSeconds(delay);
-			SendRequest(pid, tags, callback, data, method);
+			SendRequest(pid, tags, callback, data, method, useMainWallet, walletType);
 		}
 
-		protected virtual IEnumerator SendRequestCoroutine(string pid, List<Tag> tags, Action<bool, NodeCU> callback, string data = "", NetworkMethod method = NetworkMethod.Dryrun, bool useMainWallet = false)
+		protected virtual IEnumerator SendRequestCoroutine(string pid, List<Tag> tags, Action<bool, NodeCU> callback, string data = "", NetworkMethod method = NetworkMethod.Dryrun, bool useMainWallet = false, WalletType walletType = WalletType.Default)
 		{
 			if (method == NetworkMethod.Dryrun)
 			{
-				yield return StartCoroutine(SendHttpPostRequest(pid, tags, callback, data, useMainWallet));
+				yield return StartCoroutine(SendHttpPostRequest(pid, tags, callback, data, useMainWallet, walletType));
 			}
 			else if (!Application.isEditor)
 			{
-				yield return StartCoroutine(SendMessageToProcess(pid, data, tags, callback, useMainWallet));
+				yield return StartCoroutine(SendMessageToProcess(pid, data, tags, callback, useMainWallet, walletType));
 			}
 			else if (doWeb2IfInEditor)
 			{
-				yield return StartCoroutine(SendHttpPostRequest(pid, tags, callback, data, useMainWallet));
+				yield return StartCoroutine(SendHttpPostRequest(pid, tags, callback, data, useMainWallet, walletType));
 			}
 			else
 			{
@@ -107,7 +107,7 @@ namespace Permaverse.AO
 			}
 		}
 
-		protected IEnumerator SendHttpPostRequest(string pid, List<Tag> tags, Action<bool, NodeCU> callback, string data = "", bool useMainWallet = false)
+		protected IEnumerator SendHttpPostRequest(string pid, List<Tag> tags, Action<bool, NodeCU> callback, string data = "", bool useMainWallet = false, WalletType walletType = WalletType.Default)
 		{
 			string url = baseUrl + pid;
 			string ownerId;
@@ -146,7 +146,7 @@ namespace Permaverse.AO
 
 				if (resendIfResultFalse)
 				{
-					SendRequest(pid, tags, callback, delay: resendDelays[resendIndex], method: NetworkMethod.Dryrun, useMainWallet: useMainWallet);
+					SendRequest(pid, tags, callback, delay: resendDelays[resendIndex], method: NetworkMethod.Dryrun, useMainWallet: useMainWallet, walletType: walletType);
 
 					if (increaseResendDelay && resendIndex + 1 < resendDelays.Count)
 					{
@@ -184,7 +184,7 @@ namespace Permaverse.AO
 			}
 		}
 
-		protected IEnumerator SendMessageToProcess(string pid, string data, List<Tag> tags, Action<bool, NodeCU> callback, bool useMainWallet = false)
+		protected IEnumerator SendMessageToProcess(string pid, string data, List<Tag> tags, Action<bool, NodeCU> callback, bool useMainWallet = false, WalletType walletType = WalletType.Default)
 		{
 			string ownerId;
 
@@ -226,9 +226,14 @@ namespace Permaverse.AO
 				tagsJsonArray.Add(tag.ToJson());
 			}
 
+			if(AOConnectManager.main.addClientVersionTag && !string.IsNullOrEmpty(AOConnectManager.main.clientVersion))
+			{
+				tagsJsonArray.Add(new Tag("ClientVersion", AOConnectManager.main.clientVersion).ToJson());
+			}
+
 			string tagsStr = tagsJsonArray.ToString();
 
-			AOConnectManager.main.SendMessageToProcess(pid, data, tagsStr, uniqueID, gameObject.name, "MessageCallback", useMainWallet);
+			AOConnectManager.main.SendMessageToProcess(pid, data, tagsStr, uniqueID, gameObject.name, "MessageCallback", useMainWallet, walletType);
 
 			yield return new WaitUntil(() => results[uniqueID].Item1);
 
