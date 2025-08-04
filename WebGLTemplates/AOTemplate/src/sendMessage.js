@@ -1,18 +1,23 @@
 import { connect } from '@permaweb/aoconnect'
 import { createDataItemSignerMain, createDataItemSignerSession, getConnectedChain } from './connectWallet'
 
-export async function sendMessageCustomCallback(pid, data, tagsStr, id, objectCallback, methodCallback, useMainWallet) {
+export async function sendMessageCustomCallback(pid, data, tagsStr, id, objectCallback, methodCallback, useMainWallet, chain) {
     var tags = JSON.parse(tagsStr);
     let json;
 
     try {
+        if (chain == 'default')
+        {
+            chain = null;
+        }
+
         // Select the appropriate signer function
         let signerFunction;
-        console.log("useMainWallet", useMainWallet);
-        if (useMainWallet == 'true' || getConnectedChain() == 'arweave') {
-            signerFunction = createDataItemSignerMain();
+        let chainToUse = chain || getConnectedChain();
+        if (useMainWallet == 'true' || chainToUse === 'arweave') {
+            signerFunction = createDataItemSignerMain(chainToUse);
         } else {
-            signerFunction = createDataItemSignerSession();
+            signerFunction = createDataItemSignerSession(chainToUse);
         }
 
         const messageId = await connect().message({

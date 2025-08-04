@@ -40,6 +40,21 @@ mergeInto(LibraryManager.library, {
         UnityAO.connectMetamaskWallet();
     },
 
+    OpenWanderConnectJS: function ()
+    {
+        UnityAO.openWanderConnect();
+    },
+
+    CloseWanderConnectJS: function ()
+    {
+        UnityAO.closeWanderConnect();
+    },
+
+    SignOutWanderJS: function ()
+    {
+        UnityAO.signOutWander();
+    },
+
     FetchProcessesJS: function (addressPtr)
     {
         var address = UTF8ToString(addressPtr);
@@ -112,6 +127,6 @@ mergeInto(LibraryManager.library, {
         var pid = UTF8ToString(pidPtr);
 
         UnityAO.getTokenBalance(pid);
-    },
+    }
 });
 

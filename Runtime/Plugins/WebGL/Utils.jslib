@@ -40,6 +40,21 @@ mergeInto(LibraryManager.library, {
         var filename = UTF8ToString(filenamePtr);
 
         UnityAO.downloadImage(data, filename);
+    },
+
+    CopyToClipboardJS: function (textPtr)
+    {
+        var text = UTF8ToString(textPtr);
+        
+        if (navigator.clipboard && navigator.clipboard.writeText) {
+            navigator.clipboard.writeText(text).then(function() {
+                console.log('Text copied to clipboard successfully');
+            }).catch(function(err) {
+                console.error('Failed to copy text to clipboard: ', err);
+            });
+        } else {
+            console.warn('Clipboard API not supported');
+        }
     }
 
 });

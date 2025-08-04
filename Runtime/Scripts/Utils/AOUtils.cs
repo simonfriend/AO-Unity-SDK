@@ -5,16 +5,21 @@ namespace Permaverse.AO
 {
     public static class AOUtils
     {
-        public static string ShortenProcessID(string input)
+        public static string ShortenString(string input, int maxLength = 10)
         {
-            if (string.IsNullOrEmpty(input) || input.Length < 10)
+            if (string.IsNullOrEmpty(input) || input.Length <= maxLength)
             {
                 return input;
             }
 
-            string start = input.Substring(0, 5);
+            if (maxLength < 7) // Need at least 7 characters for "a...b" format
+            {
+                return input.Substring(0, Math.Min(maxLength, input.Length));
+            }
 
-            string end = input.Substring(input.Length - 5, 5);
+            int sideLength = (maxLength - 3) / 2; // 3 for "..."
+            string start = input.Substring(0, sideLength);
+            string end = input.Substring(input.Length - sideLength, sideLength);
 
             return start + "..." + end;
         }

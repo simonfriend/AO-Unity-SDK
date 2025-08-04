@@ -17,11 +17,11 @@
       align-items: center; /* Center vertically */
       }
       #unity-container {
-        width: calc(100vh * 3/2); 
+        width: calc(100vh * 16/9); 
         /* Width based on the height and 3:2 aspect ratio */
       max-width: 100%; /* Limiting width to screen width */
       max-height: 100vh; /* Maximum height of the screen */
-      height: calc(100vw * 2/3); 
+      height: calc(100vw * 9/16); 
       /* Height is 2/3 of width */
       overflow: hidden; /* Hide overflow content */
       }
@@ -29,6 +29,7 @@
         width: 100%;
         height: 100%;
       }
+      
     </style>
 #if SHOW_DIAGNOSTICS
     <link rel="stylesheet" href="<<<TemplateData/diagnostics.css>>>">
@@ -41,6 +42,7 @@
           <div id="unity-loading-bar">
               <div id="unity-logo"></div>
               <div id="unity-progress-bar-empty">
+                <p>Loading...</p>
                   <div id="unity-progress-bar-full"></div>
               </div>
           </div>

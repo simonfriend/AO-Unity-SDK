@@ -1,15 +1,82 @@
-// import { createDataItemSigner } from '@permaweb/aoconnect'
 import { createAoSigner } from '@ar.io/sdk'
 import { Web3Provider } from '@ethersproject/providers'
-// import { InjectedEthereumSigner } from 'arseeding-arbundles/src/signing'
-// import { DataItem, createData } from 'arseeding-arbundles'
-import { EthereumSigner,InjectedEthereumSigner, DataItem, createData } from '@dha-team/arbundles'
+import { EthereumSigner, InjectedEthereumSigner, DataItem, createData } from '@dha-team/arbundles'
 import { ethers } from 'ethers';
+import { WanderConnect } from "@wanderapp/connect";
+
+let wanderAuthType = null;
+
+let firstLoad = true;
+
+// Initialize Wander Connect:
+// const wander = null;
+const wander = new WanderConnect({
+    button: false,
+    clientId: "FREE_TRIAL",
+    onAuth: (userDetails) => {
+        if (!!userDetails) {
+            try {
+
+                console.log("Wander Connect user details:", userDetails);
+
+                if (/*firstLoad &&*/ (userDetails.authStatus === 'authenticated' /*|| userDetails.authType === 'NATIVE_WALLET'*/)) {
+                    wanderAuthType = userDetails.authType;
+                    connectArweaveWallet();
+                    // firstLoad = false;
+                    // signOutWander();
+                    // return;
+                }
+                else if (!firstLoad && userDetails.authType === 'NATIVE_WALLET') {
+                    wanderAuthType = userDetails.authType;
+                    connectArweaveWallet();
+                    // firstLoad = false;
+                    // openWanderConnect();
+                    //return;
+                }
+                else if (userDetails.authStatus === 'loading') {
+                    wanderAuthType = userDetails.authType;
+                    myUnityInstance.SendMessage('AOConnectManager', 'UpdateWallet', 'Loading');
+                }
+
+                firstLoad = false;
+
+            } catch (error) {
+                alert("The wallet wasn't connected.")
+            }
+        }
+    }
+});
+
 
 let registeredEvent = false;
 let registeredMetamaskEvent = false;
 
-let connectedChain = 'arweave';
+// Add cleanup on page unload
+// let registeredUnloadEvent = false;
+
+// function setupUnloadHandler() {
+//     if (!registeredUnloadEvent) {
+//         window.addEventListener('beforeunload', () => {
+//             signOutWander();
+//         });
+//         registeredUnloadEvent = true;
+//     }
+// }
+
+// // Call setup immediately when module loads
+// setupUnloadHandler();
+
+let connectedChains = [];
+
+// Store both wallet infos
+let arweaveWalletInfo = null;
+let evmWalletInfo = null;
+
+export function getWalletInfo(chain) {
+    if (chain === 'arweave') return arweaveWalletInfo;
+    if (chain === 'evm') return evmWalletInfo;
+    return null;
+}
 
 export async function getArweaveSigner() {
     if (globalThis.arweaveWallet) {
@@ -17,11 +84,54 @@ export async function getArweaveSigner() {
     }
 }
 
-export function getConnectedChain() {
-    return connectedChain;
+function addConnectedChain(chain) {
+    if (!connectedChains.includes(chain)) {
+        connectedChains.push(chain);
+    }
+}
+
+export function getConnectedChain(index = 0) {
+    return connectedChains.length > index ? connectedChains[index] : null;
+}
+
+export function openWanderConnect() {
+    if (wander) {
+        wander.open();
+    } else {
+        console.error("Wander Connect is not initialized.");
+    }
+}
+
+export function closeWanderConnect() {
+    if (wander) {
+        wander.close();
+    } else {
+        console.error("Wander Connect is not initialized.");
+    }
+}
+
+export function signOutWander() {
+    if (wander && typeof wander.signOut === 'function') {
+        try {
+            wander.signOut();
+            wanderAuthType = null;
+            console.log('Wander signed out manually');
+        } catch (error) {
+            console.error('Error signing out from Wander:', error);
+        }
+    } else {
+        console.error("Wander Connect is not initialized or signOut method not available.");
+    }
 }
 
 export async function connectArweaveWallet() {
+    if (wander) {
+        if (wanderAuthType == null) {
+            openWanderConnect();
+            return;
+        }
+    }
+
     if (!globalThis.arweaveWallet) {
         alert('Error: No Arconnect extension installed!');
         return;
@@ -37,7 +147,7 @@ export async function connectArweaveWallet() {
         return null;
     }
 
-    connectedChain = 'arweave';
+    addConnectedChain('arweave');
 
     if (!registeredEvent) {
         addEventListener("walletSwitch", async (e) => {
@@ -59,8 +169,10 @@ export async function connectArweaveWallet() {
         const allAddresses = await window.arweaveWallet.getAllAddresses();
         const addressInfo = {
             address: activeAddress,
-            addresses: allAddresses
+            addresses: allAddresses,
+            chain: 'arweave'
         };
+        arweaveWalletInfo = addressInfo;
         const addressInfoString = JSON.stringify(addressInfo);
         myUnityInstance.SendMessage('AOConnectManager', 'UpdateWallet', addressInfoString);
     }
@@ -79,7 +191,7 @@ export async function connectMetamaskWallet() {
     try {
         // Request account access
         const accounts = await window.ethereum.request({ method: 'eth_requestAccounts' });
-        connectedChain = 'ethereum';
+        addConnectedChain('evm');
         const mainAccount = accounts[0];
         const storageKey = `ethSessionKey_${mainAccount}`;
         const now = Date.now();
@@ -114,8 +226,10 @@ export async function connectMetamaskWallet() {
                 address: sessionData.address,
                 mainWallet: mainAccount,
                 expiry: sessionData.expiry
-            }
+            },
+            chain: 'evm'
         };
+        evmWalletInfo = addressInfo;
         const addressInfoString = JSON.stringify(addressInfo);
         myUnityInstance.SendMessage('AOConnectManager', 'UpdateWallet', addressInfoString);
 
@@ -151,8 +265,10 @@ export async function connectMetamaskWallet() {
                         address: newSessionData.address,
                         mainWallet: newAccount,
                         expiry: newSessionData.expiry
-                    }
+                    },
+                    chain: 'evm'
                 };
+                evmWalletInfo = newAddressInfo;
                 myUnityInstance.SendMessage('AOConnectManager', 'UpdateWallet', JSON.stringify(newAddressInfo));
             });
             registeredMetamaskEvent = true;
@@ -168,16 +284,6 @@ export async function connectMetamaskWallet() {
 function generateSessionKey(mainAccount) {
     const ONE_WEEK_MS = 7 * 24 * 60 * 60 * 1000;
     try {
-        // if (typeof Web3 !== "undefined") {
-        //     const web3 = new Web3();
-        //     const newAccount = web3.eth.accounts.create();
-        //     return {
-        //         privateKey: newAccount.privateKey,
-        //         address: newAccount.address,
-        //         mainAccount: mainAccount,
-        //         expiry: Date.now() + ONE_WEEK_MS
-        //     };
-        // } else 
         if (typeof ethers !== "undefined") {
             const wallet = ethers.Wallet.createRandom();
             return {
@@ -205,8 +311,8 @@ function generateSessionKey(mainAccount) {
 }
 
 // For signing with the main MetaMask wallet
-export const createDataItemSignerMain = () => {
-    if (connectedChain === 'arweave') {
+export const createDataItemSignerMain = (chain = getConnectedChain()) => {
+    if (chain === 'arweave') {
         return async ({ data, tags = [], target, anchor } = {}) => {
             const signed = await window.arweaveWallet.signDataItem({ data, tags, anchor, target });
             const dataItem = new DataItem(Buffer.from(signed));
@@ -214,14 +320,17 @@ export const createDataItemSignerMain = () => {
                 id: await dataItem.id,
                 raw: await dataItem.getRaw()
             };
+
         }
-    } else if (connectedChain === 'ethereum') {
+    } else if (chain === 'evm') {
         return async ({ data, tags = [], target, anchor } = {}) => {
             const provider = new Web3Provider(window.ethereum);
             const signer = new InjectedEthereumSigner(provider);
             await signer.setPublicKey();
-            const dataItem = createData(data, signer, { tags, target, 
-                anchor: Math.round(Date.now() / 1000).toString().padStart(32, Math.floor(Math.random() * 10).toString()) });
+            const dataItem = createData(data, signer, {
+                tags, target,
+                anchor: Math.round(Date.now() / 1000).toString().padStart(32, Math.floor(Math.random() * 10).toString())
+            });
             await dataItem.sign(signer);
             return {
                 id: dataItem.id,
@@ -229,13 +338,13 @@ export const createDataItemSignerMain = () => {
             };
         }
     } else {
-        throw new Error(`Unsupported chain type: ${connectedChain}`);
+        throw new Error(`Unsupported chain type: ${chain}`);
     }
 };
 
 // For signing with the session key
-export const createDataItemSignerSession = () => {
-    if (connectedChain === 'ethereum') {
+export const createDataItemSignerSession = (chain = getConnectedChain()) => {
+    if (chain === 'evm') {
         const privateKey = tryGetSessionPrivateKey();
         if (!privateKey) {
             throw new Error('No session key available');
@@ -243,36 +352,9 @@ export const createDataItemSignerSession = () => {
         const arbundlesSigner = new EthereumSigner(privateKey)
         return createAoSigner(arbundlesSigner)
     } else {
-        throw new Error(`Unsupported chain type for session: ${connectedChain}`);
+        throw new Error(`Unsupported chain type for session: ${chain}`);
     }
 };
-
-// export const createDataItemSignerSession = () => {
-//     if (connectedChain === 'arweave') {
-//         return async ({ data, tags = [], target, anchor } = {}) => {
-//             const signed = await window.arweaveWallet.signDataItem({ data, tags, anchor, target });
-//             const dataItem = new DataItem(Buffer.from(signed));
-//             return {
-//                 id: await dataItem.id,
-//                 raw: await dataItem.getRaw()
-//             };
-//         }
-//     } else if (connectedChain === 'ethereum') {
-//         return async ({ data, tags = [], target, anchor } = {}) => {
-//             // const privateKey = tryGetSessionPrivateKey();
-//             // const arbundlesSigner = new EthereumSigner(privateKey)
-//             const sessionSigner = createSessionEthereumSigner(); 
-//             const dataItem = createData(data, sessionSigner, { tags, target, anchor });
-//             await dataItem.sign(sessionSigner);
-//             return {
-//                 id: dataItem.id,
-//                 raw: dataItem.getRaw()
-//             };
-//         }
-//     } else {
-//         throw new Error(`Unsupported chain type: ${connectedChain}`);
-//     }
-// };
 
 function tryGetSessionPrivateKey() {
     const mainAccount = window.ethereum.selectedAddress;
@@ -292,39 +374,3 @@ function tryGetSessionPrivateKey() {
     }
     return sessionData.privateKey;
 }
-
-// function createSessionEthereumSigner() {
-//     const mainAccount = window.ethereum.selectedAddress;
-//     if (!mainAccount) {
-//         throw new Error('No MetaMask account available for session key signing');
-//     }
-//     const storageKey = `ethSessionKey_${mainAccount}`;
-//     const stored = localStorage.getItem(storageKey);
-//     if (!stored) {
-//         throw new Error('No session key available');
-//     }
-//     let sessionData;
-//     try {
-//         sessionData = JSON.parse(stored);
-//     } catch (e) {
-//         throw new Error('Invalid session key data');
-//     }
-
-//     const wallet = new ethers.Wallet(sessionData.privateKey);
-
-//     return {
-//         // Match ARBundles' expected public key format (64-byte raw public key)
-//         publicKey: Buffer.from(wallet.signingKey.publicKey.slice(4), 'hex'), // Remove 0x04 prefix
-//         address: wallet.address,
-//         async signMessage(message) {
-//             // Replicate eth_sign behavior: sign raw Keccak-256 hash
-//             const msgHex = ethers.hexlify(message);
-//             const msgHash = ethers.keccak256(msgHex);
-//             const sig = wallet.signingKey.sign(msgHash);
-//             return sig.serialized;
-//         },
-//         async setPublicKey() {
-//             // ARBundles requires this method but doesn't need implementation here
-//         }
-//     };
-// }

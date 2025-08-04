@@ -107,6 +107,7 @@ namespace Permaverse.AO
 		public GameObject walletNotConnectedPanel;
 		public Button connectWalletButton;
 		public Button connectMetamaskButton;
+		public Button logoutButton;
 		public TMP_Text activeWalletText;
 
 		public BazarMessageHandler bazarMessageHandler;
@@ -123,6 +124,15 @@ namespace Permaverse.AO
 		private static extern void ConnectMetamaskJS();
 
 		[DllImport("__Internal")]
+		private static extern void OpenWanderConnectJS();
+
+		[DllImport("__Internal")]
+		private static extern void CloseWanderConnectJS();
+
+		[DllImport("__Internal")]
+		private static extern void SignOutWanderJS();
+
+		[DllImport("__Internal")]
 		private static extern void AlertMessageJS(string message);
 
 		[DllImport("__Internal")]
@@ -133,6 +143,9 @@ namespace Permaverse.AO
 
 		[DllImport("__Internal")]
 		private static extern void RefreshPage();
+
+		[DllImport("__Internal")]
+		private static extern void CopyToClipboardJS(string text);
 
 		void Awake()
 		{
@@ -154,6 +167,7 @@ namespace Permaverse.AO
 		{
 			connectWalletButton?.onClick.AddListener(() => ConnectWallet(WalletType.Arweave));
 			connectMetamaskButton?.onClick.AddListener(() => ConnectWallet(WalletType.EVM));
+			logoutButton?.onClick.AddListener(() => SignOutWander());
 
 			if (!Application.isEditor && Application.platform == RuntimePlatform.WebGLPlayer)
 			{
@@ -242,9 +256,9 @@ namespace Permaverse.AO
 		}
 
 		// Update UI panels based on both wallets
-		private void UpdateUIPanels()
+		private void UpdateUIPanels(bool forceConnected = false)
 		{
-			bool anyConnected = connectedWallets.Count > 0;
+			bool anyConnected = forceConnected || connectedWallets.Count > 0;
 			walletConnectedPanel?.SetActive(anyConnected);
 			walletNotConnectedPanel?.SetActive(!anyConnected);
 		}
@@ -289,15 +303,27 @@ namespace Permaverse.AO
 			if (walletData == "Error")
 			{
 				Debug.LogError("Error with Wallet!!!");
-				RefreshPage();
+				if (string.IsNullOrEmpty(CurrentAddress))
+				{
+					RefreshPage();
+				}
+				return;
+			}
+			if (walletData == "Loading")
+			{
+				// Debug.Log("Wallet is loading...");
+				UpdateUIPanels(forceConnected:true);
 				return;
 			}
 			if (string.IsNullOrEmpty(walletData))
-			{
-				Debug.LogError("Wallet is null!!!");
-				RefreshPage();
-				return;
-			}
+				{
+					Debug.LogError("Wallet is null!!!");
+					if (string.IsNullOrEmpty(CurrentAddress))
+					{
+						RefreshPage();
+					}
+					return;
+				}
 			Debug.Log("Wallet Data: " + walletData);
 
 			JSONNode address = JSON.Parse(walletData);
@@ -305,7 +331,10 @@ namespace Permaverse.AO
 			if (!address.HasKey("address"))
 			{
 				Debug.LogError("Wallet is null!!!");
-				RefreshPage();
+				if (string.IsNullOrEmpty(CurrentAddress))
+				{
+					RefreshPage();
+				}
 				return;
 			}
 
@@ -395,6 +424,51 @@ namespace Permaverse.AO
 			SendMessageCustomCallbackJS(pid, data, tags, id, objectCallback, methodCallback, useMainWalletString, chain);
 		}
 
+		public void OpenWanderConnect()
+		{
+			if (!Application.isEditor)
+			{
+				OpenWanderConnectJS();
+			}
+			else
+			{
+				Debug.Log("Opening Wander Connect in editor");
+			}
+		}
+
+		public void CloseWanderConnect()
+		{
+			if (!Application.isEditor)
+			{
+				CloseWanderConnectJS();
+			}
+			else
+			{
+				Debug.Log("Closing Wander Connect in editor");
+			}
+		}
+
+		public void SignOutWander()
+		{
+			if (!Application.isEditor)
+			{
+				SignOutWanderJS();
+			}
+			else
+			{
+				Debug.Log("Signing out Wander in editor");
+			}
+
+			RefreshPage();
+
+			// // Clear all connected wallets
+			// connectedWallets.Clear();
+			// arweaveAddressInfo = null;
+			// evmAddressInfo = null;
+
+			// OnMainAddressChanged();
+		}
+
 		public void SendNotification(string title, string text)
 		{
 			if (!Application.isEditor)
@@ -418,6 +492,20 @@ namespace Permaverse.AO
 		public void RefreshWebPage()
 		{
 			RefreshPage();
+		}
+
+		public void CopyToClipboard(string text)
+		{
+			if (!Application.isEditor && Application.platform == RuntimePlatform.WebGLPlayer)
+			{
+				CopyToClipboardJS(text);
+			}
+			else
+			{
+				// For editor/testing, you can use Unity's GUIUtility as fallback
+				GUIUtility.systemCopyBuffer = text;
+				Debug.Log("Copied to clipboard (Editor): " + text);
+			}
 		}
 
 		public void MessageCallback(string result)

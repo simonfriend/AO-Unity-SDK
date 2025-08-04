@@ -22,6 +22,7 @@ npm install --save @dha-team/arbundles
 npm install --save @ethersproject/providers
 npm install --save ethers
 npm install --save @ar.io/sdk
+npm install --save @wanderapp/connect
 
 echo 🔨 Running build script...
 node build-tools/build-script.js  REM Updated path
