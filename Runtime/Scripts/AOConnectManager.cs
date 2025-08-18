@@ -4,9 +4,12 @@ using System.Collections;
 using System.Collections.Generic;
 using System.Globalization;
 using System.Runtime.InteropServices;
+using System.Linq;
+using System.Threading.Tasks;
 using TMPro;
 using UnityEngine;
 using UnityEngine.UI;
+using System.ComponentModel;
 
 namespace Permaverse.AO
 {
@@ -40,6 +43,8 @@ namespace Permaverse.AO
 		public AddressInfo(string wallet)
 		{
 			address = wallet;
+			sessionKeyInfo = null;
+			bazarProfileData = null;
 		}
 	}
 
@@ -81,7 +86,8 @@ namespace Permaverse.AO
 		public BazarProfileData CurrentBazarProfileData => GetAddressInfo(MainWalletType)?.bazarProfileData;
 		public List<string> CurrentAddresses => GetAddressInfo(MainWalletType)?.allAddresses;
 		public SessionKeyInfo CurrentSessionKeyInfo => GetAddressInfo(MainWalletType)?.sessionKeyInfo;
-		public string CurrentSessionAddress => GetAddressInfo(MainWalletType)?.sessionKeyInfo?.address;
+		// public string CurrentSessionAddress => GetAddressInfo(MainWalletType)?.sessionKeyInfo?.address;
+		public string CurrentSessionAddress => CurrentSessionKeyInfo?.address;
 
 		// Helper: check if a wallet is connected
 		public bool IsWalletConnected(WalletType type) => connectedWallets.Contains(type);
@@ -102,6 +108,13 @@ namespace Permaverse.AO
 		[Header("Settings")]
 		public bool checkNotifications;
 
+		[Header("HyperBEAM")]
+		public string hyperBeamUrl = "http://localhost:8734";
+
+		// [Header("Editor Testing")]
+		// [Tooltip("Path to Arweave wallet keyfile for editor testing")]
+		[HideInInspector] public string editorWalletPath = "";
+
 		[Header("UI")]
 		public GameObject walletConnectedPanel;
 		public GameObject walletNotConnectedPanel;
@@ -116,6 +129,9 @@ namespace Permaverse.AO
 
 		[DllImport("__Internal")]
 		private static extern void SendMessageCustomCallbackJS(string pid, string data, string tags, string id, string objectCallback, string methodCallback, string useMainWallet, string chain);
+
+		[DllImport("__Internal")]
+		private static extern void SendMessageHyperBeamJS(string pid, string data, string tags, string id, string objectCallback, string methodCallback, string useMainWallet, string chain, string hyperBeamUrl);
 
 		[DllImport("__Internal")]
 		private static extern void ConnectWalletJS();
@@ -312,18 +328,18 @@ namespace Permaverse.AO
 			if (walletData == "Loading")
 			{
 				// Debug.Log("Wallet is loading...");
-				UpdateUIPanels(forceConnected:true);
+				UpdateUIPanels(forceConnected: true);
 				return;
 			}
 			if (string.IsNullOrEmpty(walletData))
+			{
+				Debug.LogError("Wallet is null!!!");
+				if (string.IsNullOrEmpty(CurrentAddress))
 				{
-					Debug.LogError("Wallet is null!!!");
-					if (string.IsNullOrEmpty(CurrentAddress))
-					{
-						RefreshPage();
-					}
-					return;
+					RefreshPage();
 				}
+				return;
+			}
 			Debug.Log("Wallet Data: " + walletData);
 
 			JSONNode address = JSON.Parse(walletData);
@@ -404,6 +420,21 @@ namespace Permaverse.AO
 		// Update SendMessageToProcess to allow specifying wallet type
 		public void SendMessageToProcess(string pid, string data, string tags, string id, string objectCallback = "AOConnectManager", string methodCallback = "MessageCallback", bool useMainWallet = false, WalletType typeToUse = WalletType.Default)
 		{
+			// In editor, use Node.js script if wallet path is configured
+#if UNITY_EDITOR
+			if (!string.IsNullOrEmpty(editorWalletPath) && System.IO.File.Exists(editorWalletPath))
+			{
+				// Use async execution to avoid blocking the main thread
+				StartCoroutine(SendMessageViaNodeScript(pid, data, tags, id, null, objectCallback, methodCallback, isLegacyMode: true));
+				return;
+			}
+			else
+			{
+				Debug.LogError("[AOConnectManager] Cannot send legacy message in Editor: No wallet keyfile configured or file not found.\n" +
+					"Please set the 'Editor Wallet Path' field in the AOConnectManager component to point to a valid Arweave wallet keyfile.");
+				return;
+			}
+#else
 			if (typeToUse != WalletType.Default && !IsWalletConnected(typeToUse))
 			{
 				// Queue the action
@@ -422,6 +453,44 @@ namespace Permaverse.AO
 			string useMainWalletString = useMainWallet ? "true" : "false";
 			string chain = typeToUse.ToString().ToLower();
 			SendMessageCustomCallbackJS(pid, data, tags, id, objectCallback, methodCallback, useMainWalletString, chain);
+#endif
+		}
+
+		public void SendMessageToProcessHyperBeam(string pid, string data, string tags, string id, string hyperBeamUrl, string objectCallback = "AOConnectManager", string methodCallback = "MessageCallback", bool useMainWallet = false, WalletType typeToUse = WalletType.Default)
+		{
+			// In editor, use Node.js script if wallet path is configured
+#if UNITY_EDITOR
+			if (!string.IsNullOrEmpty(editorWalletPath) && System.IO.File.Exists(editorWalletPath))
+			{
+				// Use async execution to avoid blocking the main thread
+				StartCoroutine(SendMessageViaNodeScript(pid, data, tags, id, hyperBeamUrl, objectCallback, methodCallback, isLegacyMode: false));
+				return;
+			}
+			else
+			{
+				Debug.LogError("[AOConnectManager] Cannot send HyperBEAM message in Editor: No wallet keyfile configured or file not found.\n" +
+					"Please set the 'Editor Wallet Path' field in the AOConnectManager component to point to a valid Arweave wallet keyfile.");
+				return;
+			}
+#else
+			if (typeToUse != WalletType.Default && !IsWalletConnected(typeToUse))
+			{
+				// Queue the action
+				if (!pendingWalletActions.ContainsKey(typeToUse))
+					pendingWalletActions[typeToUse] = new List<Action>();
+
+				pendingWalletActions[typeToUse].Add(() =>
+					SendMessageToProcessHyperBeam(pid, data, tags, id, hyperBeamUrl, objectCallback, methodCallback, useMainWallet, typeToUse)
+				);
+
+				// Trigger connection
+				ConnectWallet(typeToUse);
+				return;
+			}
+			string useMainWalletString = useMainWallet ? "true" : "false";
+			string chain = typeToUse.ToString().ToLower();
+			SendMessageHyperBeamJS(pid, data, tags, id, objectCallback, methodCallback, useMainWalletString, chain, hyperBeamUrl);
+#endif
 		}
 
 		public void OpenWanderConnect()
@@ -512,5 +581,175 @@ namespace Permaverse.AO
 		{
 
 		}
+
+#if UNITY_EDITOR
+		private IEnumerator SendMessageViaNodeScript(string pid, string data, string tags, string id, string hyperBeamUrl, string objectCallback, string methodCallback, bool isLegacyMode = false)
+		{
+			string modeLabel = isLegacyMode ? "Legacy AO" : "HyperBEAM";
+			Debug.Log($"[AOConnectManager] Sending {modeLabel} message via Node.js script in editor");
+
+			// Build command arguments
+			var arguments = new List<string>();
+
+			// Add script path
+			string scriptPath = GetNodeScriptPath();
+			if (string.IsNullOrEmpty(scriptPath))
+			{
+				Debug.LogError("[AOConnectManager] aoconnect-editor.js script not found");
+				yield break;
+			}
+
+			arguments.Add(scriptPath);
+
+			// Add configuration
+			arguments.Add("--process-id");
+			arguments.Add(pid);
+			arguments.Add("--wallet");
+			arguments.Add(editorWalletPath);
+			arguments.Add("--output");
+			arguments.Add("unity");
+			arguments.Add("--mode");
+			arguments.Add(isLegacyMode ? "legacy" : "hyperbeam");
+			
+			// Add HyperBEAM URL only for HyperBEAM mode
+			if (!isLegacyMode && !string.IsNullOrEmpty(hyperBeamUrl))
+			{
+				arguments.Add("--hyperbeam-url");
+				arguments.Add(hyperBeamUrl);
+			}
+			
+			// Add unique ID for request/response correlation
+			if (!string.IsNullOrEmpty(id))
+			{
+				arguments.Add("--unique-id");
+				arguments.Add(id);
+			}
+
+			// Add data if provided
+			if (!string.IsNullOrEmpty(data))
+			{
+				arguments.Add("--data");
+				arguments.Add(data);
+			}
+
+			// Parse and add tags
+			if (!string.IsNullOrEmpty(tags))
+			{
+				try
+				{
+					var tagsJson = SimpleJSON.JSON.Parse(tags);
+					if (tagsJson.IsArray)
+					{
+						for (int i = 0; i < tagsJson.AsArray.Count; i++)
+						{
+							var tagNode = tagsJson.AsArray[i];
+							if (tagNode.HasKey("name") && tagNode.HasKey("value"))
+							{
+								arguments.Add($"--tag-{tagNode["name"]}={tagNode["value"]}");
+							}
+						}
+					}
+				}
+				catch (System.Exception e)
+				{
+					Debug.LogWarning($"[AOConnectManager] Failed to parse tags: {e.Message}");
+				}
+			}
+
+			// Execute Node.js script asynchronously to avoid blocking the main thread
+			Task<string> nodeTask = null;
+			try
+			{
+				nodeTask = NodeJsUtils.ExecuteNodeScriptAsync(arguments.Select(arg => $"\"{arg}\"").ToArray());
+			}
+			catch (System.Exception e)
+			{
+				Debug.LogError($"[AOConnectManager] Failed to start Node.js execution: {e.Message}");
+				yield break;
+			}
+
+			// Wait for the task to complete without blocking the main thread
+			while (!nodeTask.IsCompleted)
+			{
+				yield return null; // Allow Unity to continue processing other frames
+			}
+
+			// Handle the result
+			try
+			{
+				if (nodeTask.IsFaulted)
+				{
+					Debug.LogError($"[AOConnectManager] Node.js script failed: {nodeTask.Exception?.GetBaseException().Message}");
+					yield break;
+				}
+
+				string output = nodeTask.Result;
+				Debug.Log($"[AOConnectManager] Node.js script completed successfully. Output: {output}");
+
+				// Parse response - Node.js script should return the same format as JavaScript sendMessageHyperBeam
+				// Expected format: { "Messages": [], "Spawns": [], "Output": "", "Error": null, "uniqueID": "..." }
+				var response = SimpleJSON.JSON.Parse(output);
+				
+				// Find the target object and call the callback method
+				GameObject targetObject = GameObject.Find(objectCallback);
+				if (targetObject != null)
+				{
+					var component = targetObject.GetComponent<MonoBehaviour>();
+					if (component != null)
+					{
+						// Use reflection to call the callback method
+						var method = component.GetType().GetMethod(methodCallback);
+						if (method != null)
+						{
+							// Pass the entire response as-is, just like the JavaScript version does
+							method.Invoke(component, new object[] { output });
+						}
+						else
+						{
+							Debug.LogWarning($"[AOConnectManager] Callback method '{methodCallback}' not found on {objectCallback}");
+						}
+					}
+					else
+					{
+						Debug.LogWarning($"[AOConnectManager] Component not found on {objectCallback}");
+					}
+				}
+				else
+				{
+					Debug.LogWarning($"[AOConnectManager] Callback object '{objectCallback}' not found");
+				}
+				
+				// Log any errors from the response
+				if (response.HasKey("Error") && !response["Error"].IsNull && !string.IsNullOrEmpty(response["Error"]))
+				{
+					Debug.LogWarning($"[AOConnectManager] HyperBEAM response contains error: {response["Error"]}");
+				}
+			}
+			catch (System.Exception e)
+			{
+				Debug.LogError($"[AOConnectManager] Failed to parse Node.js response: {e.Message}");
+			}
+		}
+
+		private string GetNodeScriptPath()
+		{
+			// Look for the script in the AO SDK EditorConnect directory
+			string[] searchPaths = {
+				System.IO.Path.Combine(Application.dataPath, "..", "Packages", "com.permaverse.ao-sdk", "EditorConnect", "aoconnect-editor.js"),
+				System.IO.Path.Combine(UnityEngine.Application.dataPath, "Packages", "com.permaverse.ao-sdk", "EditorConnect", "aoconnect-editor.js"),
+				System.IO.Path.Combine(System.IO.Directory.GetCurrentDirectory(), "Packages", "com.permaverse.ao-sdk", "EditorConnect", "aoconnect-editor.js")
+			};
+
+			foreach (string path in searchPaths)
+			{
+				if (System.IO.File.Exists(path))
+				{
+					return path;
+				}
+			}
+
+			return null;
+		}
+#endif
 	}
 }

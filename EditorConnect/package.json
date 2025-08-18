@@ -1,0 +1,24 @@
+{
+  "name": "aoconnect-editor",
+  "version": "1.0.0",
+  "description": "AOConnect testing tool for Unity Editor",
+  "main": "aoconnect-editor.js",
+  "scripts": {
+    "test": "node aoconnect-editor.js --help",
+    "test-gameinfo": "node aoconnect-editor.js --tag-Action=GetGameInfo",
+    "test-leaderboard": "node aoconnect-editor.js --tag-Action=GetLeaderboard --tag-Page=1 --tag-PageSize=5",
+    "install-deps": "npm install"
+  },
+  "dependencies": {
+    "@permaweb/aoconnect": "^0.0.89"
+  },
+  "keywords": [
+    "arweave",
+    "ao",
+    "hyperbeam",
+    "unity",
+    "testing"
+  ],
+  "author": "simonfriend",
+  "license": "MIT"
+}

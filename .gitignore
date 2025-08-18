@@ -2,3 +2,6 @@ WIP/
 
 # Mac
 .DS_Store
+
+# node
+**/node_modules/

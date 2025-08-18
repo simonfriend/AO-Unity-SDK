@@ -22,6 +22,20 @@ mergeInto(LibraryManager.library, {
         UnityAO.sendMessageCustomCallback(pid, data, action, id, object, method, useMainWallet, chain);
     },
 
+    SendMessageHyperBeamJS: function (pidPtr, dataPtr, tagsPtr, idPtr, objectPtr, methodPtr, useMainWalletPtr, chainPtr, hyperBeamUrlPtr) {
+        var pid = UTF8ToString(pidPtr);
+        var data = UTF8ToString(dataPtr);
+        var tags = UTF8ToString(tagsPtr);
+        var id = UTF8ToString(idPtr);
+        var object = UTF8ToString(objectPtr);
+        var method = UTF8ToString(methodPtr);
+        var useMainWallet = UTF8ToString(useMainWalletPtr);
+        var chain = UTF8ToString(chainPtr);
+        var hyperBeamUrl = UTF8ToString(hyperBeamUrlPtr);
+
+        UnityAO.sendMessageHyperBeam(pid, data, tags, id, object, method, useMainWallet, chain, hyperBeamUrl);
+    },
+
     TransferTokenJS: function (pidPtr, quantityPtr, recipientPtr) {
         var pid = UTF8ToString(pidPtr);
         var quantity = UTF8ToString(quantityPtr);

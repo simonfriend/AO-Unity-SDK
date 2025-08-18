@@ -2,6 +2,7 @@ using System;
 using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
+using SimpleJSON;
 
 namespace Permaverse.AO
 {
@@ -43,6 +44,15 @@ namespace Permaverse.AO
 					yield return null;
 				}
 			}
+		}
+
+		public override void ForceStopAndReset()
+		{
+			// Cancel any periodic requests first
+			CancelPeriodicRequest();
+
+			// Call base class implementation (EnqueueMessageHandler)
+			base.ForceStopAndReset();
 		}
 	}
 }
