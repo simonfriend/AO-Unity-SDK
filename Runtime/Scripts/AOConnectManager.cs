@@ -610,6 +610,8 @@ namespace Permaverse.AO
 			arguments.Add("unity");
 			arguments.Add("--mode");
 			arguments.Add(isLegacyMode ? "legacy" : "hyperbeam");
+			arguments.Add("--log-level");
+			arguments.Add("none"); // Use silent mode for production usage
 			
 			// Add HyperBEAM URL only for HyperBEAM mode
 			if (!isLegacyMode && !string.IsNullOrEmpty(hyperBeamUrl))

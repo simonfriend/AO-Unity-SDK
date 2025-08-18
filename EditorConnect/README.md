@@ -30,7 +30,7 @@ A Unity Editor tool for testing both HyperBEAM and legacy AO messages during dev
    - Place your Arweave wallet keyfile in the parent directory as `wallet.json`, or
    - Use the `--wallet` parameter to specify a custom path
 
-3. **Open Unity Editor** and go to `Tools > AO > HyperBEAM Editor Tester`
+3. **Open Unity Editor** and go to `Tools > AO > AO Message Editor Tester`
 
 4. **For HyperBEAM local mode:** Make sure HyperBEAM is running on your local address (e.g. `http://localhost:8734`)
 
@@ -49,75 +49,111 @@ The tool consists of:
 ## 🎯 Features
 
 - **Dual Mode Support**: Choose between HyperBEAM and legacy AO message modes
+- **Multiple Output Formats**: Unity format for integration, raw format for debugging
+- **Granular Logging**: Three log levels (None, Basic, Verbose) for command line usage
 - **Quick Presets**: Common message types (GetUserInfo, GetLeaderboard, EnterMatchmaking, etc.)
 - **Custom Tags**: Add any tags you need for testing
 - **Data Payload**: Send messages with custom data
 - **Real Wallet Signing**: Uses your actual Arweave wallet keyfile
 - **Unity-Friendly**: Integrates directly into Unity Editor workflow
 - **Cross-Platform**: Works on Windows, macOS, and Linux
-- **Verbose Output**: Detailed logging for debugging
 
 ## 📋 Usage Examples
 
 ### From Unity Editor:
-1. Open `Tools > AO > HyperBEAM Editor Tester`
-2. Select your preferred mode (HyperBEAM or Legacy)
-3. Click a preset button (e.g., "GetUserInfo")
-4. Click "Send HyperBEAM Message" or "Send Legacy AO Message"
-5. View the response in the editor window
+1. Open `Tools > AO > AO Message Editor Tester`
+2. Configure your settings:
+   - **Process ID**: Enter your AO process ID
+   - **Message Mode**: Choose between HyperBEAM or Legacy
+   - **Output Format**: Select Unity or Raw format
+3. Select a preset action or configure custom tags
+4. Click "Send Message"
+5. View the response in the Unity Console
 
 ### From Command Line:
 
+**Basic Examples:**
+```bash
+# Simple message with basic logging
+node aoconnect-editor.js --processId YOUR_PROCESS_ID --action GetUserInfo
+
+# Silent operation (no logs)
+node aoconnect-editor.js --processId YOUR_PROCESS_ID --action GetUserInfo --log-level none
+
+# Verbose debugging with raw output
+node aoconnect-editor.js \
+  --processId YOUR_PROCESS_ID \
+  --action GetUserInfo \
+  --log-level verbose \
+  --format raw
+```
+
 **HyperBEAM Mode (default):**
 ```bash
-# Get user info via HyperBEAM
-node aoconnect-editor.js --tag-Action=GetUserInfo
+# Get user info via HyperBEAM with custom wallet
+node aoconnect-editor.js \
+  --processId YOUR_PROCESS_ID \
+  --action GetUserInfo \
+  --wallet /path/to/your/wallet.json \
+  --log-level basic
 
-# Specify custom wallet path
-node aoconnect-editor.js --wallet /path/to/your/wallet.json --tag-Action=GetUserInfo
+# Enter matchmaking with verbose logging
+node aoconnect-editor.js \
+  --processId YOUR_PROCESS_ID \
+  --action EnterMatchmaking \
+  --data "MatchType:CasualAI,Class:SamuraiBZ" \
+  --log-level verbose
 ```
 
 **Legacy Mode:**
 ```bash
 # Get user info via legacy AO
-node aoconnect-editor.js --mode legacy --tag-Action=GetUserInfo
-
-# Enter matchmaking via legacy AO
-node aoconnect-editor.js --mode legacy \
-  --tag-Action=EnterMatchmaking \
-  --tag-MatchType=CasualAI \
-  --tag-Class=SamuraiBZ \
-  --tag-SkinId=1
-```
-
-**Cross-platform examples:**
-
-```bash
-# Get leaderboard with pagination
 node aoconnect-editor.js \
-  --tag-Action=GetLeaderboard \
-  --tag-Page=1 \
-  --tag-PageSize=10 \
-  --tag-SortBy=RankPoints
+  --processId YOUR_PROCESS_ID \
+  --action GetUserInfo \
+  --mode legacy \
+  --log-level basic
 
-# Custom message with data
+# Get leaderboard with raw output
 node aoconnect-editor.js \
-  --data "Hello AO!" \
-  --tag-Action=TestMessage \
-  --tag-CustomParam=value
+  --processId YOUR_PROCESS_ID \
+  --action GetLeaderboard \
+  --mode legacy \
+  --format raw \
+  --log-level none
 ```
 
-**Windows Command Prompt:**
-```cmd
-node aoconnect-editor.js --tag-Action=GetUserInfo --mode legacy
-```
+## 🔧 Configuration Options
 
-## 🔧 Configuration
+### Unity Editor Interface
 
-- **Process ID**: Your AO process ID
-- **Message Mode**: Choose between HyperBEAM (fast) or Legacy (traditional) 
+- **Process ID**: Your AO process ID (required)
+- **Message Mode**: 
+  - HyperBEAM: Fast message processing via HyperBEAM
+  - Legacy: Traditional AO connect message flow
+- **Output Format**: 
+  - Unity: Unity-formatted, readable output with success/error status
+  - Raw: Unprocessed response data for debugging
+- **Log Level**: Fixed to 'None' for optimal performance (use command line for verbose logging)
+
+### Command Line Parameters
+
+| Parameter | Description | Default | Options |
+|-----------|-------------|---------|---------|
+| `--processId` | AO process ID (required) | - | Any valid process ID |
+| `--action` | Message action/preset | - | GetUserInfo, GetLeaderboard, EnterMatchmaking, etc. |
+| `--data` | Message data payload | - | Any string |
+| `--wallet` | Path to wallet keyfile | ../wallet.json | Any valid file path |
+| `--mode` | Message processing mode | hyperbeam | hyperbeam, legacy |
+| `--log-level` | Logging verbosity | basic | none, basic, verbose |
+| `--format` | Output format | unity | unity, raw |
+| `--verbose` | Legacy verbose flag | false | (maps to verbose log level) |
+| `--help` | Show help information | - | - |
+
+### Environment Configuration
+
 - **HyperBEAM URL**: Local HyperBEAM instance URL (default: http://localhost:8734)
-- **Wallet Path**: Arweave keyfile path (default: ../wallet.json, or specify with --wallet)
+- **Wallet Path**: Arweave keyfile path (can be customized with --wallet parameter)
 
 ## 🛠️ Requirements
 
@@ -131,16 +167,23 @@ node aoconnect-editor.js --tag-Action=GetUserInfo --mode legacy
 1. **Faster Development**: Test AO messages without WebGL builds
 2. **Dual Mode Support**: Test both HyperBEAM and legacy AO flows
 3. **Real Environment**: Uses actual wallet signing, same as production
-4. **Easy Debugging**: Verbose output and formatted responses
-5. **Rapid Iteration**: Quick presets for common operations
-6. **Cross-Platform**: Works on Windows, macOS, and Linux
-7. **Editor Integration**: Works seamlessly within Unity workflow
+4. **Flexible Logging**: Three log levels for performance optimization and debugging
+5. **Multiple Output Formats**: Choose format that best suits your workflow
+6. **Rapid Iteration**: Quick presets for common operations
+7. **Cross-Platform**: Works on Windows, macOS, and Linux
+8. **Editor Integration**: Works seamlessly within Unity workflow
+9. **Performance Optimized**: Silent mode for production testing, verbose for debugging
 
 ## 📝 Output Formats
 
-- **Unity Format**: JSON with success/error status for Unity integration
-- **Simple Format**: Clean, readable response data
-- **Full JSON**: Complete response with all metadata
+- **Unity Format**: JSON with success/error status optimized for Unity integration
+- **Raw Format**: Unprocessed response data with all metadata for debugging
+
+## 🔍 Log Levels
+
+- **None**: Silent operation with no console output - ideal for automated testing or production scenarios where performance is critical
+- **Basic**: Essential information only - shows errors, warnings, and key operation status
+- **Verbose**: Detailed debugging information - includes full request/response data, timing information, and step-by-step execution details
 
 ## 🚨 Troubleshooting
 

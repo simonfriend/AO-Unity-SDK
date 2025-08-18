@@ -22,6 +22,15 @@ namespace Permaverse.AO.Editor
     }
 
     /// <summary>
+    /// Output format for AO responses
+    /// </summary>
+    public enum OutputFormat
+    {
+        Unity,  // Structured format for Unity integration
+        Raw     // Unprocessed response for debugging
+    }
+
+    /// <summary>
     /// Unity Editor utility for testing HyperBEAM messages without building to WebGL
     /// Uses Node.js script to send messages via aoconnect with real wallet signing
     /// </summary>
@@ -30,8 +39,8 @@ namespace Permaverse.AO.Editor
         [Header("Configuration")]
         [SerializeField] private string processId = "t9qaxM7bEyxrzJ2PG52qyvP4h3ub6DG775M6XbSAYsY";
         [SerializeField] private string hyperBeamUrl = "http://localhost:8734";
-        [SerializeField] private bool verbose = true;
         [SerializeField] private MessageMode messageMode = MessageMode.HyperBeam;
+        [SerializeField] private OutputFormat outputFormat = OutputFormat.Unity;
 
         // [Header("Debug")]
         // [SerializeField]
@@ -42,7 +51,6 @@ namespace Permaverse.AO.Editor
         [SerializeField] private List<MessageTag> tags = new List<MessageTag>();
         
         [Header("Output")]
-        [SerializeField] private bool prettyPrint = true;
         [SerializeField] private Vector2 scrollPosition;
         [SerializeField] private Vector2 mainScrollPosition; // Main scroll for entire window
         [SerializeField] private string lastResponse = "";
@@ -164,7 +172,15 @@ namespace Permaverse.AO.Editor
             EditorGUILayout.LabelField("Configuration", EditorStyles.boldLabel);
             processId = EditorGUILayout.TextField("Process ID", processId);
             hyperBeamUrl = EditorGUILayout.TextField("HyperBEAM URL", hyperBeamUrl);
-            verbose = EditorGUILayout.Toggle("Verbose Output", verbose);
+            
+            // Output format selection
+            EditorGUILayout.BeginHorizontal();
+            EditorGUILayout.LabelField("Output Format", GUILayout.Width(100));
+            outputFormat = (OutputFormat)EditorGUILayout.EnumPopup(outputFormat, GUILayout.Width(100));
+            EditorGUILayout.LabelField(outputFormat == OutputFormat.Unity ? 
+                "Structured format for Unity integration" : 
+                "Raw unprocessed response for debugging", EditorStyles.miniLabel);
+            EditorGUILayout.EndHorizontal();
             
             // Message mode selection
             EditorGUILayout.BeginHorizontal();
@@ -257,17 +273,39 @@ namespace Permaverse.AO.Editor
             if (showResponse && !string.IsNullOrEmpty(lastResponse))
             {
                 EditorGUILayout.LabelField("Last Response", EditorStyles.boldLabel);
-                prettyPrint = EditorGUILayout.Toggle("Pretty Print", prettyPrint);
                 
-                scrollPosition = EditorGUILayout.BeginScrollView(scrollPosition, GUILayout.Height(200));
-                string displayText = prettyPrint ? FormatJson(lastResponse) : lastResponse;
-                EditorGUILayout.SelectableLabel(displayText, EditorStyles.textArea, GUILayout.ExpandHeight(true));
+                // Use a more spacious scroll view with min height
+                scrollPosition = EditorGUILayout.BeginScrollView(scrollPosition, GUILayout.Height(300), GUILayout.ExpandHeight(true));
+                
+                // Display the response in a text area that supports scrolling
+                // Since our Node.js script already outputs properly formatted JSON, no need for pretty print toggle
+                
+                // Use TextArea with word wrap for better readability
+                GUIStyle textStyle = new GUIStyle(EditorStyles.textArea);
+                textStyle.wordWrap = true;
+                textStyle.stretchHeight = true;
+                
+                // Calculate content height for proper scrolling
+                var content = new GUIContent(lastResponse);
+                float textHeight = textStyle.CalcHeight(content, EditorGUIUtility.currentViewWidth - 40);
+                
+                EditorGUILayout.SelectableLabel(lastResponse, textStyle, GUILayout.MinHeight(textHeight), GUILayout.ExpandHeight(true));
                 EditorGUILayout.EndScrollView();
 
+                EditorGUILayout.BeginHorizontal();
                 if (GUILayout.Button("Copy Response"))
                 {
+                    // Copy the raw response data, not the formatted display text
                     EditorGUIUtility.systemCopyBuffer = lastResponse;
+                    UnityEngine.Debug.Log("[AO Tester] Response copied to clipboard");
                 }
+                if (GUILayout.Button("Clear Response"))
+                {
+                    lastResponse = "";
+                    showResponse = false;
+                    Repaint();
+                }
+                EditorGUILayout.EndHorizontal();
             }
             
             // End main scroll view
@@ -327,7 +365,9 @@ namespace Permaverse.AO.Editor
                 arguments.Add("--wallet");
                 arguments.Add(walletPath);
                 arguments.Add("--output");
-                arguments.Add("unity");
+                arguments.Add(outputFormat == OutputFormat.Unity ? "unity" : "raw");
+                arguments.Add("--log-level");
+                arguments.Add("none"); // Always use none for optimal performance in Unity Editor
                 arguments.Add("--mode");
                 arguments.Add(messageMode == MessageMode.HyperBeam ? "hyperbeam" : "legacy");
                 
@@ -337,11 +377,9 @@ namespace Permaverse.AO.Editor
                     arguments.Add("--hyperbeam-url");
                     arguments.Add(hyperBeamUrl);
                 }
-                
-                if (verbose)
-                {
-                    arguments.Add("--verbose");
-                }
+
+                // Note: Unity Editor always uses log-level "none" for optimal performance
+                // Verbose debugging can be done via command line if needed
 
                 // Add data if provided
                 if (!string.IsNullOrEmpty(messageData))
@@ -372,18 +410,16 @@ namespace Permaverse.AO.Editor
                 {
                     UnityEngine.Debug.Log($"[HyperBEAM Tester] Raw response: {result}");
                     var json = JSON.Parse(result);
-                    if (json["success"].AsBool)
-                    {
-                        UnityEngine.Debug.Log($"[AO Tester] {messageMode} message sent successfully!");
-                        if (verbose && json["data"] != null)
-                        {
-                            UnityEngine.Debug.Log($"[HyperBEAM Tester] Response data: {json["data"]}");
-                        }
-                    }
-                    else
-                    {
-                        UnityEngine.Debug.LogError($"[HyperBEAM Tester] Failed: {json["error"]}");
-                    }
+                    UnityEngine.Debug.Log($"[AO Tester] {messageMode} message sent successfully!");
+                    // if (json["success"].AsBool)
+                    // {
+
+                    //     // Note: Response data logging removed for performance - use command line for verbose output
+                    // }
+                    // else
+                    // {
+                    //     UnityEngine.Debug.LogError($"[HyperBEAM Tester] Failed: {json["error"]}");
+                    // }
                 }
                 catch
                 {
@@ -484,19 +520,6 @@ namespace Permaverse.AO.Editor
             }
             
             return "[WALLET_FROM_KEYFILE]"; // Fallback placeholder
-        }
-
-        private string FormatJson(string json)
-        {
-            try
-            {
-                var parsed = JSON.Parse(json);
-                return parsed.ToString(2); // Pretty print with 2-space indentation
-            }
-            catch
-            {
-                return json; // Return as-is if parsing fails
-            }
         }
     }
 }

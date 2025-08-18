@@ -17,6 +17,24 @@ const DEFAULT_PROCESS_ID = "t9qaxM7bEyxrzJ2PG52qyvP4h3ub6DG775M6XbSAYsY"; // You
 const DEFAULT_HYPERBEAM_URL = "http://localhost:8734";
 const DEFAULT_WALLET_PATH = path.join(__dirname, '..', 'wallet.json');
 
+// Logging helper functions
+function logBasic(options, message, ...args) {
+    if (options.logLevel === 'basic' || options.logLevel === 'verbose') {
+        console.log(message, ...args);
+    }
+}
+
+function logVerbose(options, message, ...args) {
+    if (options.logLevel === 'verbose') {
+        console.log(message, ...args);
+    }
+}
+
+function logError(options, message, ...args) {
+    // Always log errors regardless of level
+    console.error(message, ...args);
+}
+
 // Parse command line arguments
 function parseArgs() {
     const args = process.argv.slice(2);
@@ -27,8 +45,8 @@ function parseArgs() {
         data: "",
         tags: {},
         help: false,
-        verbose: false,
-        output: "json", // json, unity, or simple
+        logLevel: "basic", // none, basic, verbose
+        output: "raw", // unity or raw
         uniqueID: null, // Will be set from command line or generated if not provided
         mode: "hyperbeam" // hyperbeam or legacy
     };
@@ -39,7 +57,15 @@ function parseArgs() {
         if (arg === '--help' || arg === '-h') {
             options.help = true;
         } else if (arg === '--verbose' || arg === '-v') {
-            options.verbose = true;
+            options.logLevel = "verbose"; // Backward compatibility
+        } else if (arg === '--log-level' || arg === '-l') {
+            const level = args[++i];
+            if (['none', 'basic', 'verbose'].includes(level)) {
+                options.logLevel = level;
+            } else {
+                console.error('❌ Invalid log level. Use: none, basic, verbose');
+                process.exit(1);
+            }
         } else if (arg === '--process-id' || arg === '-p') {
             options.processId = args[++i];
         } else if (arg === '--hyperbeam-url' || arg === '-u') {
@@ -80,30 +106,28 @@ function parseArgs() {
 }
 
 // Load wallet
-function loadWallet(walletPath) {
+function loadWallet(walletPath, options) {
     try {
         const wallet = JSON.parse(fs.readFileSync(walletPath, 'utf8'));
         return wallet;
     } catch (error) {
-        console.error('❌ Failed to load wallet from:', walletPath);
-        console.error('💡 Make sure the wallet file exists and is valid JSON');
+        logError(options, '❌ Failed to load wallet from:', walletPath);
+        logError(options, '💡 Make sure the wallet file exists and is valid JSON');
         process.exit(1);
     }
 }
 
 // Send Legacy AO message
 async function sendLegacyMessage(options) {
-    const wallet = loadWallet(options.walletPath);
+    const wallet = loadWallet(options.walletPath, options);
     
-    if (options.verbose) {
-        console.log('🔧 Configuration (Legacy Mode):');
-        console.log('   Process ID:', options.processId);
-        console.log('   Wallet Path:', options.walletPath);
-        console.log('   Data:', options.data || '(empty)');
-        console.log('   Tags:', Object.keys(options.tags).length > 0 ? options.tags : '(none)');
-        console.log('   Wallet:', wallet ? 'Loaded' : 'Not loaded');
-        console.log('');
-    }
+    logVerbose(options, '🔧 Configuration (Legacy Mode):');
+    logVerbose(options, '   Process ID:', options.processId);
+    logVerbose(options, '   Wallet Path:', options.walletPath);
+    logVerbose(options, '   Data:', options.data || '(empty)');
+    logVerbose(options, '   Tags:', Object.keys(options.tags).length > 0 ? options.tags : '(none)');
+    logVerbose(options, '   Wallet:', wallet ? 'Loaded' : 'Not loaded');
+    logVerbose(options, '');
 
     try {
         // Convert tags object to array format for legacy AO
@@ -112,13 +136,11 @@ async function sendLegacyMessage(options) {
             value
         }));
 
-        if (options.verbose) {
-            console.log('📤 Sending legacy message with parameters:');
-            console.log('   Process:', options.processId);
-            console.log('   Tags:', tagsArray);
-            console.log('   Data:', options.data || '(empty)');
-            console.log('');
-        }
+        logVerbose(options, '📤 Sending legacy message with parameters:');
+        logVerbose(options, '   Process:', options.processId);
+        logVerbose(options, '   Tags:', tagsArray);
+        logVerbose(options, '   Data:', options.data || '(empty)');
+        logVerbose(options, '');
 
         // Send legacy AO message
         const messageId = await message({
@@ -131,10 +153,8 @@ async function sendLegacyMessage(options) {
             .padStart(32, Math.floor(Math.random() * 10).toString())
         });
 
-        if (options.verbose) {
-            console.log('📨 Message sent, ID:', messageId);
-            console.log('🔄 Getting result...');
-        }
+        logVerbose(options, '📨 Message sent, ID:', messageId);
+        logVerbose(options, '🔄 Getting result...');
 
         // Get the result
         const legacyResult = await result({
@@ -142,10 +162,8 @@ async function sendLegacyMessage(options) {
             process: options.processId
         });
 
-        if (options.verbose) {
-            console.log('✅ Legacy AO message sent successfully!');
-            console.log('');
-        }
+        logBasic(options, '✅ Legacy AO message sent successfully!');
+        logVerbose(options, '');
 
         return legacyResult;
 
@@ -161,10 +179,8 @@ async function sendLegacyMessage(options) {
             };
             console.log(JSON.stringify(errorResponse));
         } else {
-            console.error('❌ Failed to send legacy AO message:', error.message);
-            if (options.verbose) {
-                console.error('💡 Full error:', error);
-            }
+            logError(options, '❌ Failed to send legacy AO message:', error.message);
+            logVerbose(options, '💡 Full error:', error);
         }
         process.exit(1);
     }
@@ -172,18 +188,16 @@ async function sendLegacyMessage(options) {
 
 // Send HyperBEAM message
 async function sendHyperBeamMessage(options) {
-    const wallet = loadWallet(options.walletPath);
+    const wallet = loadWallet(options.walletPath, options);
     
-    if (options.verbose) {
-        console.log('🔧 Configuration:');
-        console.log('   Process ID:', options.processId);
-        console.log('   HyperBEAM URL:', options.hyperBeamUrl);
-        console.log('   Wallet Path:', options.walletPath);
-        console.log('   Data:', options.data || '(empty)');
-        console.log('   Tags:', Object.keys(options.tags).length > 0 ? options.tags : '(none)');
-        console.log('   Wallet:', wallet ? 'Loaded' : 'Not loaded');
-        console.log('');
-    }
+    logVerbose(options, '🔧 Configuration:');
+    logVerbose(options, '   Process ID:', options.processId);
+    logVerbose(options, '   HyperBEAM URL:', options.hyperBeamUrl);
+    logVerbose(options, '   Wallet Path:', options.walletPath);
+    logVerbose(options, '   Data:', options.data || '(empty)');
+    logVerbose(options, '   Tags:', Object.keys(options.tags).length > 0 ? options.tags : '(none)');
+    logVerbose(options, '   Wallet:', wallet ? 'Loaded' : 'Not loaded');
+    logVerbose(options, '');
 
     // Create HyperBEAM connection
     const { request } = connect({
@@ -209,18 +223,14 @@ async function sendHyperBeamMessage(options) {
         // Add tags as properties
         Object.assign(requestParams, options.tags);
 
-        if (options.verbose) {
-            console.log('📤 Sending request with parameters:', requestParams);
-            console.log('');
-        }
+        logVerbose(options, '📤 Sending request with parameters:', requestParams);
+        logVerbose(options, '');
 
         // Send request via HyperBEAM
         const result = await request(requestParams);
 
-        if (options.verbose) {
-            console.log('✅ HyperBEAM message sent successfully!');
-            console.log('');
-        }
+        logBasic(options, '✅ HyperBEAM message sent successfully!');
+        logVerbose(options, '');
 
         return result;
 
@@ -236,10 +246,8 @@ async function sendHyperBeamMessage(options) {
             };
             console.log(JSON.stringify(errorResponse));
         } else {
-            console.error('❌ Failed to send HyperBEAM message:', error.message);
-            if (options.verbose) {
-                console.error('💡 Full error:', error);
-            }
+            logError(options, '❌ Failed to send HyperBEAM message:', error.message);
+            logVerbose(options, '💡 Full error:', error);
         }
         process.exit(1);
     }
@@ -257,14 +265,59 @@ function formatOutput(result, options) {
                     // For legacy mode, the result should already be in the right format
                     resultData = result;
                 } else {
-                    // For HyperBEAM mode, extract body from HyperBEAM response: result.json.body
-                    if (result && result.json && result.json.body) {
-                        // Parse the body if it's a JSON string
-                        if (typeof result.json.body === 'string') {
-                            resultData = JSON.parse(result.json.body);
-                        } else {
-                            resultData = result.json.body;
+                    // For HyperBEAM mode, handle nested response structure
+                    // HyperBEAM response: result.body -> parsed.json.body -> actual AO response
+                    if (result && result.body) {
+                        try {
+                            // First level: parse result.body (HyperBEAM wrapper) - handle both string and object
+                            let parsed;
+                            if (typeof result.body === 'string') {
+                                parsed = JSON.parse(result.body);
+                            } else {
+                                // result.body is already an object
+                                parsed = result.body;
+                            }
+                            logVerbose(options, '🔍 Parsed HyperBEAM wrapper:', JSON.stringify(parsed, null, 2));
+                            
+                            if (parsed && parsed.json && parsed.json.body) {
+                                // Second level: parse parsed.json.body (actual AO response) - handle both string and object
+                                let aoResponse;
+                                if (typeof parsed.json.body === 'string') {
+                                    aoResponse = JSON.parse(parsed.json.body);
+                                } else {
+                                    // parsed.json.body is already an object
+                                    aoResponse = parsed.json.body;
+                                }
+                                logVerbose(options, '🔍 Parsed AO response:', JSON.stringify(aoResponse, null, 2));
+                                resultData = aoResponse;
+                            } else if (parsed && parsed.body) {
+                                // Alternative structure: try parsing parsed.body - handle both string and object
+                                try {
+                                    let aoResponse;
+                                    if (typeof parsed.body === 'string') {
+                                        aoResponse = JSON.parse(parsed.body);
+                                    } else {
+                                        aoResponse = parsed.body;
+                                    }
+                                    resultData = aoResponse;
+                                } catch {
+                                    resultData = parsed;
+                                }
+                            } else if (parsed) {
+                                // Fallback if structure is different
+                                resultData = parsed;
+                            } else {
+                                throw new Error("Empty parsed response");
+                            }
+                        } catch (parseError) {
+                            logVerbose(options, '⚠️ Could not parse HyperBEAM response body as JSON:', parseError.message);
+                            logVerbose(options, '⚠️ Raw result.body:', result.body);
+                            // Fallback to full result
+                            resultData = result;
                         }
+                    } else if (result && result.json && result.json.body) {
+                        // Direct structure handling
+                        resultData = result.json.body;
                     } else if (result) {
                         // Fallback to full result if body structure is different
                         resultData = result;
@@ -285,6 +338,7 @@ function formatOutput(result, options) {
                 return JSON.stringify(response);
                 
             } catch (bodyError) {
+                logVerbose(options, '⚠️ Response parsing failed:', bodyError.message);
                 // Handle case where parsing fails
                 const fallbackResponse = {
                     Messages: [],
@@ -297,18 +351,9 @@ function formatOutput(result, options) {
                 return JSON.stringify(fallbackResponse);
             }
             
-        case 'simple':
-            // Simple text output
-            if (options.mode === 'legacy') {
-                return JSON.stringify(result, null, 2);
-            } else if (result && result.json && result.json.body) {
-                return JSON.stringify(result.json.body, null, 2);
-            }
-            return JSON.stringify(result, null, 2);
-            
-        case 'json':
+        case 'raw':
         default:
-            // Full JSON output
+            // Raw JSON output - unprocessed result for debugging
             return JSON.stringify(result, null, 2);
     }
 }
@@ -323,23 +368,35 @@ function showHelp() {
 
 🔧 Options:
    -h, --help                    Show this help message
-   -v, --verbose                 Verbose output
+   --log-level <level>           Log level: none, basic, verbose (default: basic)
+   -v, --verbose                 Enable verbose logging (same as --log-level verbose)
    -p, --process-id <id>         Target process ID (default: ${DEFAULT_PROCESS_ID})
    -u, --hyperbeam-url <url>     HyperBEAM URL (default: ${DEFAULT_HYPERBEAM_URL})
-   -w, --wallet <path>      Arweave wallet keyfile path (default: ../wallet.json)
+   -w, --wallet <path>           Arweave wallet keyfile path (default: ../wallet.json)
    -d, --data <data>             Message data payload
-   -o, --output <format>         Output format: json, unity, simple (default: json)
-   -m, --mode <mode>             Message mode: hyperbeam, legacy (default: hyperbeam)
-   
-   --tag-<name>=<value>          Add tag (e.g., --tag-Action=EnterMatchmaking)
-   -t<name>=<value>              Add tag (short form, e.g., -tAction=EnterMatchmaking)
+   -t, --tag-<key>=<value>       Add custom tag (e.g., --tag-Action=GetUserInfo)
+   -o, --output <format>         Output format: unity, raw (default: raw)
+   -m, --mode <mode>             Mode: hyperbeam, legacy (default: hyperbeam)
+   --unique-id <id>              Unique identifier for Unity callbacks
 
-📋 Examples:
-   # HyperBEAM mode (default)
+🎯 Output Formats:
+   • unity: Structured format for Unity integration (Messages, Spawns, Output, Error)
+   • raw:   Unprocessed response for debugging
+
+� Log Levels:
+   • none:    Silent mode for production performance
+   • basic:   Essential information only
+   • verbose: Detailed debugging information
+
+�📋 Examples:
+   # Basic usage with HyperBEAM (default)
    node aoconnect-editor.js --tag-Action=GetUserInfo
    
    # Legacy AO mode
    node aoconnect-editor.js --mode legacy --tag-Action=GetUserInfo
+   
+   # Silent mode for performance
+   node aoconnect-editor.js --log-level none --tag-Action=GetUserInfo
    
    # Enter matchmaking with HyperBEAM
    node aoconnect-editor.js \\
@@ -348,21 +405,11 @@ function showHelp() {
      --tag-Class=SamuraiBZ \\
      --tag-SkinId=1
    
-   # Enter matchmaking with legacy AO
-   node aoconnect-editor.js --mode legacy \\
-     --tag-Action=EnterMatchmaking \\
-     --tag-MatchType=CasualAI
-   
    # Unity-friendly output format
    node aoconnect-editor.js --output unity --tag-Action=GetUserInfo
    
-   # Custom wallet path
-   node aoconnect-editor.js --wallet /path/to/wallet.json --tag-Action=GetUserInfo
-   
-   # With data payload
-   node aoconnect-editor.js --data "Hello AO!" --tag-Action=TestMessage
-
-🌐 Requirements:
+   # Custom wallet path with verbose logging
+   node aoconnect-editor.js --verbose --wallet /path/to/wallet.json --tag-Action=GetUserInfo🌐 Requirements:
    - Node.js (v16 or higher)
    - Valid Arweave wallet keyfile
    - @permaweb/aoconnect package installed
@@ -413,7 +460,7 @@ async function main() {
             };
             console.log(JSON.stringify(errorResponse));
         } else {
-            console.error('❌ Script failed:', error.message);
+            logError(options, '❌ Script failed:', error.message);
         }
         process.exit(1);
     }
