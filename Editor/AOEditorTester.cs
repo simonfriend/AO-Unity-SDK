@@ -1,14 +1,10 @@
 using System;
 using System.Collections.Generic;
-using System.Diagnostics;
 using System.IO;
 using System.Threading.Tasks;
 using UnityEditor;
 using UnityEngine;
-using UnityEngine.SceneManagement;
 using SimpleJSON;
-using System.Linq;
-using Permaverse.AO;
 
 namespace Permaverse.AO.Editor
 {
@@ -34,7 +30,7 @@ namespace Permaverse.AO.Editor
     /// Unity Editor utility for testing HyperBEAM messages without building to WebGL
     /// Uses Node.js script to send messages via aoconnect with real wallet signing
     /// </summary>
-    public class HyperBeamEditorTester : EditorWindow
+    public class AOEditorTester : EditorWindow
     {
         [Header("Configuration")]
         [SerializeField] private string processId = "t9qaxM7bEyxrzJ2PG52qyvP4h3ub6DG775M6XbSAYsY";
@@ -78,10 +74,10 @@ namespace Permaverse.AO.Editor
             ["GetMatchInfo"] = new[] { new MessageTag { name = "Action", value = "GetMatchInfo", enabled = true } },
         };
 
-        [MenuItem("Tools/AO/AO Message Editor Tester")]
+        [MenuItem("Tools/Permaverse/AO Editor Tester")]
         public static void ShowWindow()
         {
-            GetWindow<HyperBeamEditorTester>("AO Message Tester");
+            GetWindow<AOEditorTester>("AO Editor Tester");
         }
 
         private void OnEnable()
@@ -328,33 +324,33 @@ namespace Permaverse.AO.Editor
 
         private async Task SendMessage()
         {
-            if (verboseLogs) UnityEngine.Debug.Log("[HyperBEAM Tester] SendMessage() method started");
+            if (verboseLogs) UnityEngine.Debug.Log("[AO Editor Tester] SendMessage() method started");
             
             try
             {
-                if (verboseLogs) UnityEngine.Debug.Log("[HyperBEAM Tester] Getting wallet path...");
+                if (verboseLogs) UnityEngine.Debug.Log("[AO Editor Tester] Getting wallet path...");
                 // Try to get wallet path from AOConnectManager first
                 string walletPath = GetWalletPath();
                 if (string.IsNullOrEmpty(walletPath))
                 {
-                    UnityEngine.Debug.LogError("[HyperBEAM Tester] No wallet path found");
+                    UnityEngine.Debug.LogError("[AO Editor Tester] No wallet path found");
                     EditorUtility.DisplayDialog("Error", 
                         "No wallet keyfile configured.\n\n" +
                         "Please set up the wallet path in the AOConnectManager component in your scene, " +
                         "or ensure the script can find the default wallet file.", "OK");
                     return;
                 }
-                if (verboseLogs) UnityEngine.Debug.Log($"[HyperBEAM Tester] Wallet path found: {Path.GetFileName(walletPath)}");
+                if (verboseLogs) UnityEngine.Debug.Log($"[AO Editor Tester] Wallet path found: {Path.GetFileName(walletPath)}");
 
-                if (verboseLogs) UnityEngine.Debug.Log("[HyperBEAM Tester] Getting script path...");
+                if (verboseLogs) UnityEngine.Debug.Log("[AO Editor Tester] Getting script path...");
                 string scriptPath = GetScriptPath();
                 if (!File.Exists(scriptPath))
                 {
-                    UnityEngine.Debug.LogError($"[HyperBEAM Tester] Script not found at: {scriptPath}");
-                    EditorUtility.DisplayDialog("Error", $"HyperBEAM tester script not found at:\n{scriptPath}\n\nMake sure the script exists and npm packages are installed.", "OK");
+                    UnityEngine.Debug.LogError($"[AO Editor Tester] Script not found at: {scriptPath}");
+                    EditorUtility.DisplayDialog("Error", $"AO Editor tester script not found at:\n{scriptPath}\n\nMake sure the script exists and npm packages are installed.", "OK");
                     return;
                 }
-                if (verboseLogs) UnityEngine.Debug.Log($"[HyperBEAM Tester] Script path found: {scriptPath}");
+                if (verboseLogs) UnityEngine.Debug.Log($"[AO Editor Tester] Script path found: {scriptPath}");
 
                 if (verboseLogs) UnityEngine.Debug.Log("[AO Tester] Building arguments...");
                 var arguments = new List<string> { scriptPath };
@@ -408,7 +404,7 @@ namespace Permaverse.AO.Editor
                 // Parse response for success/error
                 try
                 {
-                    UnityEngine.Debug.Log($"[HyperBEAM Tester] Raw response: {result}");
+                    UnityEngine.Debug.Log($"[AO Editor Tester] Raw response: {result}");
                     var json = JSON.Parse(result);
                     UnityEngine.Debug.Log($"[AO Tester] {messageMode} message sent successfully!");
                     // if (json["success"].AsBool)
@@ -418,35 +414,35 @@ namespace Permaverse.AO.Editor
                     // }
                     // else
                     // {
-                    //     UnityEngine.Debug.LogError($"[HyperBEAM Tester] Failed: {json["error"]}");
+                    //     UnityEngine.Debug.LogError($"[AO Editor Tester] Failed: {json["error"]}");
                     // }
                 }
                 catch
                 {
-                    UnityEngine.Debug.Log($"[HyperBEAM Tester] Raw response: {result}");
+                    UnityEngine.Debug.Log($"[AO Editor Tester] Raw response: {result}");
                 }
 
                 Repaint();
             }
             catch (Exception e)
             {
-                UnityEngine.Debug.LogError($"[HyperBEAM Tester] Error: {e.Message}");
+                UnityEngine.Debug.LogError($"[AO Editor Tester] Error: {e.Message}");
                 EditorUtility.DisplayDialog("Error", $"Failed to send message:\n{e.Message}", "OK");
             }
         }
 
         private string GetWalletPath()
         {
-            if (verboseLogs) UnityEngine.Debug.Log("[HyperBEAM Tester] GetWalletPath() - checking AOConnectManager...");
+            if (verboseLogs) UnityEngine.Debug.Log("[AO Editor Tester] GetWalletPath() - checking AOConnectManager...");
             // First try to get from AOConnectManager
             var aoManager = FindAOConnectManager();
             if (aoManager != null && !string.IsNullOrEmpty(aoManager.editorWalletPath) && File.Exists(aoManager.editorWalletPath))
             {
-                if (verboseLogs) UnityEngine.Debug.Log($"[HyperBEAM Tester] Found wallet from AOConnectManager: {Path.GetFileName(aoManager.editorWalletPath)}");
+                if (verboseLogs) UnityEngine.Debug.Log($"[AO Editor Tester] Found wallet from AOConnectManager: {Path.GetFileName(aoManager.editorWalletPath)}");
                 return aoManager.editorWalletPath;
             }
             
-            if (verboseLogs) UnityEngine.Debug.Log("[HyperBEAM Tester] AOConnectManager wallet not found, checking default paths...");
+            if (verboseLogs) UnityEngine.Debug.Log("[AO Editor Tester] AOConnectManager wallet not found, checking default paths...");
             // Fallback to default wallet locations
             string[] defaultPaths = {
                 Path.Combine(Application.dataPath, "..", "Packages", "com.permaverse.ao-sdk", "wallet.json"),
@@ -456,15 +452,15 @@ namespace Permaverse.AO.Editor
             
             foreach (string path in defaultPaths)
             {
-                if (verboseLogs) UnityEngine.Debug.Log($"[HyperBEAM Tester] Checking default path: {path}");
+                if (verboseLogs) UnityEngine.Debug.Log($"[AO Editor Tester] Checking default path: {path}");
                 if (File.Exists(path))
                 {
-                    if (verboseLogs) UnityEngine.Debug.Log($"[HyperBEAM Tester] Found wallet at default path: {Path.GetFileName(path)}");
+                    if (verboseLogs) UnityEngine.Debug.Log($"[AO Editor Tester] Found wallet at default path: {Path.GetFileName(path)}");
                     return path;
                 }
             }
             
-            if (verboseLogs) UnityEngine.Debug.Log("[HyperBEAM Tester] No wallet found in any default paths");
+            if (verboseLogs) UnityEngine.Debug.Log("[AO Editor Tester] No wallet found in any default paths");
             return null;
         }
 

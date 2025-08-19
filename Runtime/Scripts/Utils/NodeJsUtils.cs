@@ -143,7 +143,9 @@ namespace Permaverse.AO
                 
                 if (process.ExitCode != 0)
                 {
-                    throw new Exception($"Node.js script failed (exit code {process.ExitCode}):\n{error}");
+                    string errorDetails = !string.IsNullOrEmpty(error) ? error : "No error details available";
+                    string outputDetails = !string.IsNullOrEmpty(output) ? $"\nOutput: {output}" : "";
+                    throw new Exception($"Node.js script failed (exit code {process.ExitCode}):\nError: {errorDetails}{outputDetails}");
                 }
                 
                 return output.Trim();
@@ -189,7 +191,9 @@ namespace Permaverse.AO
                 
                 if (process.ExitCode != 0)
                 {
-                    throw new Exception($"Node.js script failed (exit code {process.ExitCode}):\n{error}");
+                    string errorDetails = !string.IsNullOrEmpty(error) ? error : "No error details available";
+                    string outputDetails = !string.IsNullOrEmpty(output) ? $"\nOutput: {output}" : "";
+                    throw new Exception($"Node.js script failed (exit code {process.ExitCode}):\nError: {errorDetails}{outputDetails}");
                 }
                 
                 return output.Trim();

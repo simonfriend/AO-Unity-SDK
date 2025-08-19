@@ -104,7 +104,7 @@ namespace Permaverse.AO.Editor
             EditorGUI.BeginDisabledGroup(string.IsNullOrEmpty(manager.editorWalletPath) || !File.Exists(manager.editorWalletPath));
             if (GUILayout.Button("Open HyperBEAM Editor Tester"))
             {
-                HyperBeamEditorTester.ShowWindow();
+                AOEditorTester.ShowWindow();
             }
             EditorGUI.EndDisabledGroup();
             
