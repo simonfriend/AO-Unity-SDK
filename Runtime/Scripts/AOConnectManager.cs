@@ -583,6 +583,53 @@ namespace Permaverse.AO
 		}
 
 #if UNITY_EDITOR
+		// Helper method to ensure we always call the callback with proper error formatting
+		private void InvokeCallback(string objectCallback, string methodCallback, string id, string errorMessage = null, string output = null)
+		{
+			string json;
+			
+			if (!string.IsNullOrEmpty(errorMessage))
+			{
+				// Create error response in the same format as JavaScript functions
+				json = $"{{\"Messages\":[],\"Spawns\":[],\"Output\":\"\",\"Error\":\"{errorMessage.Replace("\"", "\\\"")}\",\"uniqueID\":\"{id}\"}}";
+			}
+			else if (!string.IsNullOrEmpty(output))
+			{
+				json = output;
+			}
+			else
+			{
+				// Fallback error case
+				json = $"{{\"Messages\":[],\"Spawns\":[],\"Output\":\"\",\"Error\":\"Unknown error in SendMessageViaNodeScript\",\"uniqueID\":\"{id}\"}}";
+			}
+
+			// Find the target object and call the callback method
+			GameObject targetObject = GameObject.Find(objectCallback);
+			if (targetObject != null)
+			{
+				var component = targetObject.GetComponent<MonoBehaviour>();
+				if (component != null)
+				{
+					var method = component.GetType().GetMethod(methodCallback);
+					if (method != null)
+					{
+						method.Invoke(component, new object[] { json });
+					}
+					else
+					{
+						Debug.LogWarning($"[AOConnectManager] Callback method '{methodCallback}' not found on {objectCallback}");
+					}
+				}
+				else
+				{
+					Debug.LogWarning($"[AOConnectManager] Component not found on {objectCallback}");
+				}
+			}
+			else
+			{
+				Debug.LogWarning($"[AOConnectManager] Callback object '{objectCallback}' not found");
+			}
+		}
 		private IEnumerator SendMessageViaNodeScript(string pid, string data, string tags, string id, string hyperBeamUrl, string objectCallback, string methodCallback, bool isLegacyMode = false)
 		{
 			string modeLabel = isLegacyMode ? "Legacy AO" : "HyperBEAM";
@@ -595,7 +642,9 @@ namespace Permaverse.AO
 			string scriptPath = GetNodeScriptPath();
 			if (string.IsNullOrEmpty(scriptPath))
 			{
-				Debug.LogError("[AOConnectManager] aoconnect-editor.js script not found");
+				string errorMsg = "aoconnect-editor.js script not found";
+				Debug.LogError($"[AOConnectManager] {errorMsg}");
+				InvokeCallback(objectCallback, methodCallback, id, errorMsg);
 				yield break;
 			}
 
@@ -627,14 +676,20 @@ namespace Permaverse.AO
 				arguments.Add(id);
 			}
 
-			// Add data if provided
+			// Add data if provided using base64 encoding to avoid command line escaping issues
 			if (!string.IsNullOrEmpty(data))
 			{
-				arguments.Add("--data");
-				arguments.Add(data);
+				// Encode data as base64 to avoid command line escaping issues with JSON
+				byte[] dataBytes = System.Text.Encoding.UTF8.GetBytes(data);
+				string dataBase64 = System.Convert.ToBase64String(dataBytes);
+				
+				arguments.Add("--data-base64");
+				arguments.Add(dataBase64);
+				Debug.Log($"[AOConnectManager] Encoding data as base64 ({dataBytes.Length} bytes)");
+				Debug.Log($"[AOConnectManager] Data: {data}");
 			}
 
-			// Parse and add tags
+			// Parse and add tags using base64 encoding for the entire tags object
 			if (!string.IsNullOrEmpty(tags))
 			{
 				try
@@ -642,14 +697,27 @@ namespace Permaverse.AO
 					var tagsJson = SimpleJSON.JSON.Parse(tags);
 					if (tagsJson.IsArray)
 					{
+						// Convert tags array directly to JSON object format for base64 encoding
+						var tagsObjectJson = new SimpleJSON.JSONObject();
 						for (int i = 0; i < tagsJson.AsArray.Count; i++)
 						{
 							var tagNode = tagsJson.AsArray[i];
 							if (tagNode.HasKey("name") && tagNode.HasKey("value"))
 							{
-								arguments.Add($"--tag-{tagNode["name"]}={tagNode["value"]}");
+								string tagName = tagNode["name"];
+								string tagValue = tagNode["value"];
+								tagsObjectJson[tagName] = tagValue;
 							}
 						}
+						
+						// Encode tags object as base64
+						string tagsObjectJsonString = tagsObjectJson.ToString();
+						byte[] tagsBytes = System.Text.Encoding.UTF8.GetBytes(tagsObjectJsonString);
+						string tagsBase64 = System.Convert.ToBase64String(tagsBytes);
+						
+						arguments.Add("--tags-base64");
+						arguments.Add(tagsBase64);
+						Debug.Log($"[AOConnectManager] Encoding tags as base64: {tagsObjectJsonString}");
 					}
 				}
 				catch (System.Exception e)
@@ -666,7 +734,9 @@ namespace Permaverse.AO
 			}
 			catch (System.Exception e)
 			{
-				Debug.LogError($"[AOConnectManager] Failed to start Node.js execution: {e.Message}");
+				string errorMsg = $"Failed to start Node.js execution: {e.Message}";
+				Debug.LogError($"[AOConnectManager] {errorMsg}");
+				InvokeCallback(objectCallback, methodCallback, id, errorMsg);
 				yield break;
 			}
 
@@ -681,7 +751,9 @@ namespace Permaverse.AO
 			{
 				if (nodeTask.IsFaulted)
 				{
-					Debug.LogError($"[AOConnectManager] Node.js script failed: {nodeTask.Exception?.GetBaseException().Message}");
+					string errorMsg = $"Node.js script failed: {nodeTask.Exception?.GetBaseException().Message}";
+					Debug.LogError($"[AOConnectManager] {errorMsg}");
+					InvokeCallback(objectCallback, methodCallback, id, errorMsg);
 					yield break;
 				}
 
@@ -692,34 +764,8 @@ namespace Permaverse.AO
 				// Expected format: { "Messages": [], "Spawns": [], "Output": "", "Error": null, "uniqueID": "..." }
 				var response = SimpleJSON.JSON.Parse(output);
 				
-				// Find the target object and call the callback method
-				GameObject targetObject = GameObject.Find(objectCallback);
-				if (targetObject != null)
-				{
-					var component = targetObject.GetComponent<MonoBehaviour>();
-					if (component != null)
-					{
-						// Use reflection to call the callback method
-						var method = component.GetType().GetMethod(methodCallback);
-						if (method != null)
-						{
-							// Pass the entire response as-is, just like the JavaScript version does
-							method.Invoke(component, new object[] { output });
-						}
-						else
-						{
-							Debug.LogWarning($"[AOConnectManager] Callback method '{methodCallback}' not found on {objectCallback}");
-						}
-					}
-					else
-					{
-						Debug.LogWarning($"[AOConnectManager] Component not found on {objectCallback}");
-					}
-				}
-				else
-				{
-					Debug.LogWarning($"[AOConnectManager] Callback object '{objectCallback}' not found");
-				}
+				// Call the callback with the successful response
+				InvokeCallback(objectCallback, methodCallback, id, null, output);
 				
 				// Log any errors from the response
 				if (response.HasKey("Error") && !response["Error"].IsNull && !string.IsNullOrEmpty(response["Error"]))
@@ -729,7 +775,9 @@ namespace Permaverse.AO
 			}
 			catch (System.Exception e)
 			{
-				Debug.LogError($"[AOConnectManager] Failed to parse Node.js response: {e.Message}");
+				string errorMsg = $"Failed to parse Node.js response: {e.Message}";
+				Debug.LogError($"[AOConnectManager] {errorMsg}");
+				InvokeCallback(objectCallback, methodCallback, id, errorMsg);
 			}
 		}
 
@@ -737,9 +785,9 @@ namespace Permaverse.AO
 		{
 			// Look for the script in the AO SDK EditorConnect directory
 			string[] searchPaths = {
-				System.IO.Path.Combine(Application.dataPath, "..", "Packages", "com.permaverse.ao-sdk", "EditorConnect", "aoconnect-editor.js"),
-				System.IO.Path.Combine(UnityEngine.Application.dataPath, "Packages", "com.permaverse.ao-sdk", "EditorConnect", "aoconnect-editor.js"),
-				System.IO.Path.Combine(System.IO.Directory.GetCurrentDirectory(), "Packages", "com.permaverse.ao-sdk", "EditorConnect", "aoconnect-editor.js")
+				System.IO.Path.Combine(Application.dataPath, "..", "Packages", "com.permaverse.ao-sdk", "EditorConnect~", "aoconnect-editor.js"),
+				System.IO.Path.Combine(UnityEngine.Application.dataPath, "Packages", "com.permaverse.ao-sdk", "EditorConnect~", "aoconnect-editor.js"),
+				System.IO.Path.Combine(System.IO.Directory.GetCurrentDirectory(), "Packages", "com.permaverse.ao-sdk", "EditorConnect~", "aoconnect-editor.js")
 			};
 
 			foreach (string path in searchPaths)

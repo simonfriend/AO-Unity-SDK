@@ -16,13 +16,13 @@ A Unity Editor tool for testing both HyperBEAM and legacy AO messages during dev
    
    **macOS/Linux:**
    ```bash
-   cd Packages/com.permaverse.ao-sdk/EditorConnect
+   cd Packages/com.permaverse.ao-sdk/EditorConnect~
    ./setup.sh
    ```
    
    **Windows:**
    ```cmd
-   cd Packages\com.permaverse.ao-sdk\EditorConnect
+   cd Packages\com.permaverse.ao-sdk\EditorConnect~
    setup.bat
    ```
 

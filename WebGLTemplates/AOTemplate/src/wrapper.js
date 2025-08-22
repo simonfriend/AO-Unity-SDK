@@ -1,4 +1,4 @@
-import { transferToken, sendMessageCustomCallback } from './sendMessage.js'
+import { transferToken, sendMessageCustomCallback, sendMessageHyperBeam } from './sendMessage.js'
 import { spawnProcess, fetchProcesses } from './spawnProcess.js'
 import { connectArweaveWallet, connectMetamaskWallet, signOutWander, openWanderConnect, closeWanderConnect } from './connectWallet.js'
 import { requestNotificationPermission, sendNotification } from './utils.js'
@@ -9,6 +9,7 @@ import { stake, unstake, getTokenBalance, getStakedBalance } from './stakeHandle
 
 export const UnityAO = {
     sendMessageCustomCallback,
+    sendMessageHyperBeam,
     transferToken,
     spawnProcess,
     connectArweaveWallet,

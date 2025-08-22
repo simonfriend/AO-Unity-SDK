@@ -18,7 +18,7 @@ echo "🔄 Installing/updating dependencies..."
 npm install --save-dev esbuild
 npm install --save-dev esbuild-plugin-polyfill-node
 
-npm install --save @permaweb/aoconnect@0.0.54
+npm install --save @permaweb/aoconnect
 npm install --save @dha-team/arbundles
 npm install --save @ethersproject/providers
 npm install --save ethers

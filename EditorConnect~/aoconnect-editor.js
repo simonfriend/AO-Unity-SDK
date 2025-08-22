@@ -74,6 +74,24 @@ function parseArgs() {
             options.walletPath = args[++i];
         } else if (arg === '--data' || arg === '-d') {
             options.data = args[++i];
+        } else if (arg === '--data-base64') {
+            // Decode base64 data
+            try {
+                options.data = Buffer.from(args[++i], 'base64').toString('utf8');
+            } catch (error) {
+                console.error('❌ Invalid base64 data:', error.message);
+                process.exit(1);
+            }
+        } else if (arg === '--tags-base64') {
+            // Decode base64 tags JSON
+            try {
+                const tagsJson = Buffer.from(args[++i], 'base64').toString('utf8');
+                const decodedTags = JSON.parse(tagsJson);
+                options.tags = { ...options.tags, ...decodedTags };
+            } catch (error) {
+                console.error('❌ Invalid base64 tags JSON:', error.message);
+                process.exit(1);
+            }
         } else if (arg === '--output' || arg === '-o') {
             options.output = args[++i];
         } else if (arg === '--mode' || arg === '-m') {
@@ -373,8 +391,10 @@ function showHelp() {
    -p, --process-id <id>         Target process ID (default: ${DEFAULT_PROCESS_ID})
    -u, --hyperbeam-url <url>     HyperBEAM URL (default: ${DEFAULT_HYPERBEAM_URL})
    -w, --wallet <path>           Arweave wallet keyfile path (default: ../wallet.json)
-   -d, --data <data>             Message data payload
-   -t, --tag-<key>=<value>       Add custom tag (e.g., --tag-Action=GetUserInfo)
+   -d, --data <data>             Message data payload (raw string)
+   --data-base64 <data>          Message data payload (base64 encoded)
+   --tags-base64 <tags>          All tags as base64 encoded JSON object
+   -t, --tag-<key>=<value>       Add individual tag (e.g., --tag-Action=GetUserInfo)
    -o, --output <format>         Output format: unity, raw (default: raw)
    -m, --mode <mode>             Mode: hyperbeam, legacy (default: hyperbeam)
    --unique-id <id>              Unique identifier for Unity callbacks
@@ -391,6 +411,12 @@ function showHelp() {
 �📋 Examples:
    # Basic usage with HyperBEAM (default)
    node aoconnect-editor.js --tag-Action=GetUserInfo
+   
+   # Using base64 encoded tags (recommended for complex data)
+   node aoconnect-editor.js --tags-base64 eyJBY3Rpb24iOiJHZXRVc2VySW5mbyJ9
+   
+   # Using base64 encoded data
+   node aoconnect-editor.js --data-base64 eyJrZXkiOiJ2YWx1ZSJ9 --tag-Action=ProcessData
    
    # Legacy AO mode
    node aoconnect-editor.js --mode legacy --tag-Action=GetUserInfo

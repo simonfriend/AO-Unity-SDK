@@ -103,6 +103,10 @@ namespace Permaverse.AO
 			hyperBeamMethodName = methodName;
 			useHyperBeamPath = true;
 			hyperBeamCallback = callback;
+			if (!string.IsNullOrEmpty(moduleId))
+			{
+				luaModuleId = moduleId;
+			}
 			
 			List<Tag> completeTags = new List<Tag>(this.tags)
 			{

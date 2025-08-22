@@ -1,49 +1,70 @@
 import { createAoSigner } from '@ar.io/sdk'
 import { Web3Provider } from '@ethersproject/providers'
-import { EthereumSigner, InjectedEthereumSigner, DataItem, createData } from '@dha-team/arbundles'
+import { EthereumSigner, InjectedEthereumSigner, createData } from '@dha-team/arbundles'
 import { ethers } from 'ethers';
 import { WanderConnect } from "@wanderapp/connect";
+import { createDataItemSigner } from '@permaweb/aoconnect'
 
 let wanderAuthType = null;
-
-let firstLoad = true;
+let wanderWalletLoaded = false;
+let firstOnAuth = true;
+let checkedNativeWallet = false;
 
 // Initialize Wander Connect:
-// const wander = null;
 const wander = new WanderConnect({
     button: false,
     clientId: "FREE_TRIAL",
     onAuth: (userDetails) => {
         if (!!userDetails) {
             try {
-
                 console.log("Wander Connect user details:", userDetails);
 
-                if (/*firstLoad &&*/ (userDetails.authStatus === 'authenticated' /*|| userDetails.authType === 'NATIVE_WALLET'*/)) {
-                    wanderAuthType = userDetails.authType;
-                    connectArweaveWallet();
-                    // firstLoad = false;
-                    // signOutWander();
-                    // return;
+                // Sign out on first onAuth to clear any previous sessions
+                if (firstOnAuth) {
+                    try {
+                        wander.signOut();
+                        console.log('Cleared previous Wander session on first onAuth');
+                    } catch (error) {
+                        console.warn('Could not clear previous Wander session:', error);
+                    }
+                    firstOnAuth = false;
+                    return;
                 }
-                else if (!firstLoad && userDetails.authType === 'NATIVE_WALLET') {
+
+                if (userDetails.authStatus === 'authenticated') {
                     wanderAuthType = userDetails.authType;
                     connectArweaveWallet();
-                    // firstLoad = false;
-                    // openWanderConnect();
-                    //return;
+                }
+                else if (userDetails.authType === 'NATIVE_WALLET') {
+                    if (checkedNativeWallet) {
+                        wanderAuthType = userDetails.authType;
+                        connectArweaveWallet();
+                    }
+
+                    checkedNativeWallet = true;
                 }
                 else if (userDetails.authStatus === 'loading') {
                     wanderAuthType = userDetails.authType;
                     myUnityInstance.SendMessage('AOConnectManager', 'UpdateWallet', 'Loading');
                 }
 
-                firstLoad = false;
+                // firstLoad = false;
+                firstOnAuth = false; // Reset firstOnAuth after handling the first auth
 
             } catch (error) {
-                alert("The wallet wasn't connected.")
+                console.error("Error handling Wander auth:", error);
             }
         }
+    }
+});
+
+// Listen for the arweaveWalletLoaded event to know when Wander wallet is ready
+window.addEventListener("arweaveWalletLoaded", async (e) => {
+    try {
+        console.log("Arweave wallet loaded event - Wander is ready:", e.detail);
+        wanderWalletLoaded = true;
+    } catch (error) {
+        console.error("Error handling arweaveWalletLoaded:", error);
     }
 });
 
@@ -133,7 +154,7 @@ export async function connectArweaveWallet() {
     }
 
     if (!globalThis.arweaveWallet) {
-        alert('Error: No Arconnect extension installed!');
+        alert('Error: No Arweave wallet available! Please connect through Wander Connect or install Wander extension.');
         return;
     }
 
@@ -313,15 +334,16 @@ function generateSessionKey(mainAccount) {
 // For signing with the main MetaMask wallet
 export const createDataItemSignerMain = (chain = getConnectedChain()) => {
     if (chain === 'arweave') {
-        return async ({ data, tags = [], target, anchor } = {}) => {
-            const signed = await window.arweaveWallet.signDataItem({ data, tags, anchor, target });
-            const dataItem = new DataItem(Buffer.from(signed));
-            return {
-                id: await dataItem.id,
-                raw: await dataItem.getRaw()
-            };
+        return createDataItemSigner(globalThis.arweaveWallet);
+        // return async ({ data, tags = [], target, anchor } = {}) => {
+        //     const signed = await window.arweaveWallet.signDataItem({ data, tags, anchor, target });
+        //     const dataItem = new DataItem(Buffer.from(signed));
+        //     return {
+        //         id: await dataItem.id,
+        //         raw: await dataItem.getRaw()
+        //     };
 
-        }
+        // }
     } else if (chain === 'evm') {
         return async ({ data, tags = [], target, anchor } = {}) => {
             const provider = new Web3Provider(window.ethereum);

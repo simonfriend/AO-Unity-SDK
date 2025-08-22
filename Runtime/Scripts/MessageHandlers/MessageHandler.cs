@@ -46,6 +46,7 @@ namespace Permaverse.AO
 		protected Dictionary<string, (bool, string, string)> results = new Dictionary<string, (bool, string, string)>();
 		protected int requestsCount = 0;
 
+		[Serializable]
 		public enum NetworkMethod
 		{
 			Dryrun,
@@ -120,18 +121,18 @@ namespace Permaverse.AO
 			{
 				yield return StartCoroutine(SendHyperBeamMessage(pid, data, tags, callback, useMainWallet, walletType));
 			}
-			else if (!Application.isEditor)
-			{
-				yield return StartCoroutine(SendMessageToProcess(pid, data, tags, callback, useMainWallet, walletType));
-			}
-			else if (doWeb2IfInEditor)
+			else if (doWeb2IfInEditor && Application.isEditor)
 			{
 				yield return StartCoroutine(SendHttpPostRequest(pid, tags, callback, data, useMainWallet, walletType));
 			}
 			else
 			{
-				Debug.LogError($"[{gameObject.name}] Can't send messages in editor");
+				yield return StartCoroutine(SendMessageToProcess(pid, data, tags, callback, useMainWallet, walletType));
 			}
+			// else
+			// {
+			// 	Debug.LogError($"[{gameObject.name}] Can't send messages in editor");
+			// }
 		}
 
 		protected virtual IEnumerator SendHyperBeamPathCoroutine(string url, Action<bool, string> callback)
