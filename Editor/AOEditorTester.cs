@@ -195,7 +195,7 @@ namespace Permaverse.AO.Editor
             EditorGUILayout.BeginVertical(EditorStyles.helpBox);
             EditorGUILayout.LabelField("Setup Dependencies", EditorStyles.boldLabel);
             EditorGUILayout.LabelField("Run the setup script to install Node.js dependencies:", EditorStyles.wordWrappedLabel);
-            EditorGUILayout.LabelField("cd Packages/com.permaverse.ao-sdk/EditorConnect", EditorStyles.miniLabel);
+            EditorGUILayout.LabelField("cd Packages/com.permaverse.ao-sdk/EditorConnect~", EditorStyles.miniLabel);
             EditorGUILayout.LabelField("./setup.sh", EditorStyles.miniLabel);
             EditorGUILayout.Space();
             EditorGUILayout.LabelField("Or see the README.md for detailed setup instructions.", EditorStyles.wordWrappedLabel);
@@ -468,9 +468,9 @@ namespace Permaverse.AO.Editor
         {
             // Look for the script in the AO SDK EditorConnect directory
             string[] searchPaths = {
-                Path.Combine(Application.dataPath, "..", "Packages", "com.permaverse.ao-sdk", "EditorConnect", "aoconnect-editor.js"),
-                Path.Combine(Directory.GetCurrentDirectory(), "Packages", "com.permaverse.ao-sdk", "EditorConnect", "aoconnect-editor.js"),
-                Path.Combine(Application.dataPath, "Packages", "com.permaverse.ao-sdk", "EditorConnect", "aoconnect-editor.js")
+                Path.Combine(Application.dataPath, "..", "Packages", "com.permaverse.ao-sdk", "EditorConnect~", "aoconnect-editor.js"),
+                Path.Combine(Directory.GetCurrentDirectory(), "Packages", "com.permaverse.ao-sdk", "EditorConnect~", "aoconnect-editor.js"),
+                Path.Combine(Application.dataPath, "Packages", "com.permaverse.ao-sdk", "EditorConnect~", "aoconnect-editor.js")
             };
 
             foreach (string path in searchPaths)
