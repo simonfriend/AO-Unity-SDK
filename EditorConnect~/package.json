@@ -10,7 +10,7 @@
     "install-deps": "npm install"
   },
   "dependencies": {
-    "@permaweb/aoconnect": "^0.0.89"
+    "@permaweb/aoconnect": "^0.0.90"
   },
   "keywords": [
     "arweave",

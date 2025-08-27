@@ -258,7 +258,7 @@ namespace Permaverse.AO
 
 				if (ShouldResend(jsonResponse))
 				{
-					SendRequest(pid, tags, callback, delay: resendDelays[resendIndex], method: NetworkMethod.Dryrun);
+					SendRequest(pid, tags, callback, delay: resendDelays[resendIndex], method: NetworkMethod.Dryrun, useMainWallet: useMainWallet, walletType: walletType);
 
 					if (increaseResendDelay && resendIndex + 1 < resendDelays.Count)
 					{
@@ -275,15 +275,25 @@ namespace Permaverse.AO
 
 		protected IEnumerator SendMessageToProcess(string pid, string data, List<Tag> tags, Action<bool, NodeCU> callback, bool useMainWallet = false, WalletType walletType = WalletType.Default)
 		{
-			string ownerId;
+			// Get the appropriate AddressInfo based on walletType
+			AddressInfo addressInfo = AOConnectManager.main.GetSecondaryWalletInfo(walletType);
 
-			if (useMainWallet || string.IsNullOrEmpty(AOConnectManager.main.CurrentSessionAddress))
+			if (addressInfo == null)
 			{
-				ownerId = AOConnectManager.main.CurrentAddress;
+				Debug.LogError($"No address info found for wallet type: {walletType}");
+				var errorResponse = new NodeCU("{\"Error\":\"No wallet info found for specified type\"}");
+				callback?.Invoke(false, errorResponse);
+				yield break;
+			}
+
+			string ownerId;
+			if (useMainWallet || string.IsNullOrEmpty(addressInfo.sessionKeyInfo?.address))
+			{
+				ownerId = addressInfo.address;
 			}
 			else
 			{
-				ownerId = AOConnectManager.main.CurrentSessionAddress;
+				ownerId = addressInfo.sessionKeyInfo.address;
 			}
 
 			if (data == null)
@@ -330,15 +340,15 @@ namespace Permaverse.AO
 
 			NodeCU networkResponse = new NodeCU(response);
 
+			// Use the same logic as for initial ownerId to determine what address should be expected
 			string currentOwnerId;
-
-			if (useMainWallet || string.IsNullOrEmpty(AOConnectManager.main.CurrentSessionAddress))
+			if (useMainWallet || string.IsNullOrEmpty(addressInfo.sessionKeyInfo?.address))
 			{
-				currentOwnerId = AOConnectManager.main.CurrentAddress;
+				currentOwnerId = addressInfo.address;
 			}
 			else
 			{
-				currentOwnerId = AOConnectManager.main.CurrentSessionAddress;
+				currentOwnerId = addressInfo.sessionKeyInfo.address;
 			}
 
 			if (savedAddress != currentOwnerId)
@@ -352,7 +362,7 @@ namespace Permaverse.AO
 
 				if (resendIfResultFalse)
 				{
-					SendRequest(pid, tags, callback, delay: resendDelays[resendIndex], data, method: NetworkMethod.Message, useMainWallet: useMainWallet);
+					SendRequest(pid, tags, callback, delay: resendDelays[resendIndex], data, method: NetworkMethod.Message, useMainWallet: useMainWallet, walletType: walletType);
 
 					if (increaseResendDelay && resendIndex + 1 < resendDelays.Count)
 					{
@@ -369,7 +379,7 @@ namespace Permaverse.AO
 			{
 				if (!networkResponse.IsSuccessful() && resendIfResultFalse)
 				{
-					SendRequest(pid, tags, callback, delay: resendDelays[resendIndex], data, method: NetworkMethod.Message, useMainWallet: useMainWallet);
+					SendRequest(pid, tags, callback, delay: resendDelays[resendIndex], data, method: NetworkMethod.Message, useMainWallet: useMainWallet, walletType: walletType);
 
 					if (increaseResendDelay && resendIndex + 1 < resendDelays.Count)
 					{
@@ -507,15 +517,25 @@ namespace Permaverse.AO
 
 		protected virtual IEnumerator SendHyperBeamMessage(string pid, string data, List<Tag> tags, Action<bool, NodeCU> callback, bool useMainWallet = false, WalletType walletType = WalletType.Default)
 		{
-			string ownerId;
+			// Get the appropriate AddressInfo based on walletType
+			AddressInfo addressInfo = AOConnectManager.main.GetSecondaryWalletInfo(walletType);
 
-			if (useMainWallet || string.IsNullOrEmpty(AOConnectManager.main.CurrentSessionAddress))
+			if (addressInfo == null)
 			{
-				ownerId = AOConnectManager.main.CurrentAddress;
+				Debug.LogError($"No address info found for wallet type: {walletType}");
+				var errorResponse = new NodeCU("{\"Error\":\"No wallet info found for specified type\"}");
+				callback?.Invoke(false, errorResponse);
+				yield break;
+			}
+
+			string ownerId;
+			if (useMainWallet || string.IsNullOrEmpty(addressInfo.sessionKeyInfo?.address))
+			{
+				ownerId = addressInfo.address;
 			}
 			else
 			{
-				ownerId = AOConnectManager.main.CurrentSessionAddress;
+				ownerId = addressInfo.sessionKeyInfo.address;
 			}
 
 			if (data == null)
@@ -562,15 +582,15 @@ namespace Permaverse.AO
 
 			NodeCU networkResponse = new NodeCU(response);
 
+			// Use the same logic as for initial ownerId to determine what address should be expected
 			string currentOwnerId;
-
-			if (useMainWallet || string.IsNullOrEmpty(AOConnectManager.main.CurrentSessionAddress))
+			if (useMainWallet || string.IsNullOrEmpty(addressInfo.sessionKeyInfo?.address))
 			{
-				currentOwnerId = AOConnectManager.main.CurrentAddress;
+				currentOwnerId = addressInfo.address;
 			}
 			else
 			{
-				currentOwnerId = AOConnectManager.main.CurrentSessionAddress;
+				currentOwnerId = addressInfo.sessionKeyInfo.address;
 			}
 
 			if (savedAddress != currentOwnerId)
@@ -584,7 +604,7 @@ namespace Permaverse.AO
 
 				if (resendIfResultFalse)
 				{
-					SendRequest(pid, tags, callback, delay: resendDelays[resendIndex], data, method: NetworkMethod.HyperBeamMessage, useMainWallet: useMainWallet);
+					SendRequest(pid, tags, callback, delay: resendDelays[resendIndex], data, method: NetworkMethod.HyperBeamMessage, useMainWallet: useMainWallet, walletType: walletType);
 
 					if (increaseResendDelay && resendIndex + 1 < resendDelays.Count)
 					{
@@ -601,7 +621,7 @@ namespace Permaverse.AO
 			{
 				if (!networkResponse.IsSuccessful() && resendIfResultFalse)
 				{
-					SendRequest(pid, tags, callback, delay: resendDelays[resendIndex], data, method: NetworkMethod.HyperBeamMessage, useMainWallet: useMainWallet);
+					SendRequest(pid, tags, callback, delay: resendDelays[resendIndex], data, method: NetworkMethod.HyperBeamMessage, useMainWallet: useMainWallet, walletType: walletType);
 
 					if (increaseResendDelay && resendIndex + 1 < resendDelays.Count)
 					{

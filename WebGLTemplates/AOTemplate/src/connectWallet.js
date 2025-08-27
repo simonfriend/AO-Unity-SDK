@@ -1,6 +1,5 @@
-import { createAoSigner } from '@ar.io/sdk'
 import { Web3Provider } from '@ethersproject/providers'
-import { EthereumSigner, InjectedEthereumSigner, createData } from '@dha-team/arbundles'
+import { EthereumSigner, InjectedEthereumSigner } from '@dha-team/arbundles'
 import { ethers } from 'ethers';
 import { WanderConnect } from "@wanderapp/connect";
 import { createDataItemSigner } from '@permaweb/aoconnect'
@@ -8,7 +7,6 @@ import { createDataItemSigner } from '@permaweb/aoconnect'
 let wanderAuthType = null;
 let wanderWalletLoaded = false;
 let firstOnAuth = true;
-let checkedNativeWallet = false;
 
 // Initialize Wander Connect:
 const wander = new WanderConnect({
@@ -36,19 +34,14 @@ const wander = new WanderConnect({
                     connectArweaveWallet();
                 }
                 else if (userDetails.authType === 'NATIVE_WALLET') {
-                    if (checkedNativeWallet) {
-                        wanderAuthType = userDetails.authType;
-                        connectArweaveWallet();
-                    }
-
-                    checkedNativeWallet = true;
+                    wanderAuthType = userDetails.authType;
+                    connectArweaveWallet();
                 }
                 else if (userDetails.authStatus === 'loading') {
                     wanderAuthType = userDetails.authType;
                     myUnityInstance.SendMessage('AOConnectManager', 'UpdateWallet', 'Loading');
                 }
 
-                // firstLoad = false;
                 firstOnAuth = false; // Reset firstOnAuth after handling the first auth
 
             } catch (error) {
@@ -71,21 +64,6 @@ window.addEventListener("arweaveWalletLoaded", async (e) => {
 
 let registeredEvent = false;
 let registeredMetamaskEvent = false;
-
-// Add cleanup on page unload
-// let registeredUnloadEvent = false;
-
-// function setupUnloadHandler() {
-//     if (!registeredUnloadEvent) {
-//         window.addEventListener('beforeunload', () => {
-//             signOutWander();
-//         });
-//         registeredUnloadEvent = true;
-//     }
-// }
-
-// // Call setup immediately when module loads
-// setupUnloadHandler();
 
 let connectedChains = [];
 
@@ -335,30 +313,26 @@ function generateSessionKey(mainAccount) {
 export const createDataItemSignerMain = (chain = getConnectedChain()) => {
     if (chain === 'arweave') {
         return createDataItemSigner(globalThis.arweaveWallet);
-        // return async ({ data, tags = [], target, anchor } = {}) => {
-        //     const signed = await window.arweaveWallet.signDataItem({ data, tags, anchor, target });
-        //     const dataItem = new DataItem(Buffer.from(signed));
-        //     return {
-        //         id: await dataItem.id,
-        //         raw: await dataItem.getRaw()
-        //     };
-
-        // }
     } else if (chain === 'evm') {
-        return async ({ data, tags = [], target, anchor } = {}) => {
+        return async (create, signatureType) => {
             const provider = new Web3Provider(window.ethereum);
-            const signer = new InjectedEthereumSigner(provider);
-            await signer.setPublicKey();
-            const dataItem = createData(data, signer, {
-                tags, target,
-                anchor: Math.round(Date.now() / 1000).toString().padStart(32, Math.floor(Math.random() * 10).toString())
+            const ethSigner = new InjectedEthereumSigner(provider);
+            await ethSigner.setPublicKey();
+            
+            const dataToSign = await create({
+                publicKey: ethSigner.publicKey, // 65-byte secp256k1 public key (Uint8Array)
+                type: 3, // SignatureConfig.ETHEREUM from arbundles constants
+                alg: "secp256k1"
             });
-            await dataItem.sign(signer);
+            
+            // Sign the data with our Ethereum signer
+            const signature = await ethSigner.sign(dataToSign);
+            
             return {
-                id: dataItem.id,
-                raw: dataItem.getRaw()
+                signature: signature,
+                owner: ethSigner.publicKey 
             };
-        }
+        };
     } else {
         throw new Error(`Unsupported chain type: ${chain}`);
     }
@@ -371,8 +345,26 @@ export const createDataItemSignerSession = (chain = getConnectedChain()) => {
         if (!privateKey) {
             throw new Error('No session key available');
         }
-        const arbundlesSigner = new EthereumSigner(privateKey)
-        return createAoSigner(arbundlesSigner)
+        
+        return async (create, signatureType) => {
+            const arbundlesSigner = new EthereumSigner(privateKey);
+            
+            const publicKeyBuffer = arbundlesSigner.publicKey; // Buffer
+            const publicKeyUint8 = new Uint8Array(publicKeyBuffer); // Convert to Uint8Array
+            
+            const dataToSign = await create({
+                publicKey: publicKeyUint8, // 65-byte secp256k1 public key (Uint8Array)
+                type: 3, // SignatureConfig.ETHEREUM from arbundles constants
+                alg: "secp256k1"
+            });
+            
+            const signature = await arbundlesSigner.sign(dataToSign);
+            
+            return {
+                signature: signature,
+                owner: publicKeyUint8 // Uint8Array
+            };
+        };
     } else {
         throw new Error(`Unsupported chain type for session: ${chain}`);
     }

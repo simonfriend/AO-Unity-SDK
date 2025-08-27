@@ -9,7 +9,7 @@ export async function sendMessageCustomCallback(pid, data, tagsStr, id, objectCa
         if (chain == 'default')
         {
             chain = null;
-        }
+        } 
 
         // Select the appropriate signer function
         let signerFunction;
@@ -38,7 +38,6 @@ export async function sendMessageCustomCallback(pid, data, tagsStr, id, objectCa
         result.uniqueID = id;
         json = JSON.stringify(result);
     } catch (error) {
-        //console.error("Error in sendMessage:", error.message);
 
         const errorResponse = {
             Error: error.message,
@@ -47,10 +46,7 @@ export async function sendMessageCustomCallback(pid, data, tagsStr, id, objectCa
         json = JSON.stringify(errorResponse);
     }
 
-    //console.log("Sending Message to", objectCallback, "in", methodCallback);
-    // Always send a message back to the Unity instance regardless of success or failure
     myUnityInstance.SendMessage(objectCallback, methodCallback, json);
-
     return json;
 }
 
@@ -94,7 +90,6 @@ export async function sendMessageHyperBeam(pid, data, tagsStr, id, objectCallbac
             signerFunction = createDataItemSignerSession(chainToUse);
         }
 
-        // Create HyperBEAM connection using the working pattern from test-aoconnect.js
         const { request } = connect({
             MODE: "mainnet",
             URL: hyperBeamUrl,

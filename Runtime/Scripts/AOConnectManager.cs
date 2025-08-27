@@ -76,6 +76,7 @@ namespace Permaverse.AO
 			{
 				case WalletType.Arweave: return arweaveAddressInfo;
 				case WalletType.EVM: return evmAddressInfo;
+				case WalletType.Default: return GetAddressInfo(MainWalletType);
 				default: return null;
 			}
 		}
