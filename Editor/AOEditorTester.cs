@@ -1,10 +1,10 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
-using System.Threading.Tasks;
 using UnityEditor;
 using UnityEngine;
 using SimpleJSON;
+using Cysharp.Threading.Tasks;
 
 namespace Permaverse.AO.Editor
 {
@@ -255,7 +255,7 @@ namespace Permaverse.AO.Editor
             if (GUILayout.Button(buttonText, GUILayout.Height(30)))
             {
                 if (verboseLogs) UnityEngine.Debug.Log($"[AO Tester] Button clicked - starting {messageMode} message send...");
-                _ = SendMessage();
+                SendMessage().Forget();
             }
             // if (Application.isPlaying)
             // {
@@ -322,7 +322,7 @@ namespace Permaverse.AO.Editor
             }
         }
 
-        private async Task SendMessage()
+        private async UniTask SendMessage()
         {
             if (verboseLogs) UnityEngine.Debug.Log("[AO Editor Tester] SendMessage() method started");
             
@@ -484,7 +484,7 @@ namespace Permaverse.AO.Editor
             return searchPaths[0]; // Return first path as fallback for error message
         }
 
-        private async Task<string> ExecuteNodeScript(string[] arguments)
+        private async UniTask<string> ExecuteNodeScript(string[] arguments)
         {
             try
             {

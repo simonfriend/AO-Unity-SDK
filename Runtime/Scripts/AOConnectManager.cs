@@ -5,7 +5,8 @@ using System.Collections.Generic;
 using System.Globalization;
 using System.Runtime.InteropServices;
 using System.Linq;
-using System.Threading.Tasks;
+using System.Threading;
+using Cysharp.Threading.Tasks;
 using TMPro;
 using UnityEngine;
 using UnityEngine.UI;
@@ -180,7 +181,7 @@ namespace Permaverse.AO
 			CultureInfo.DefaultThreadCurrentUICulture = CultureInfo.InvariantCulture;
 		}
 
-		IEnumerator Start()
+		async void Start()
 		{
 			connectWalletButton?.onClick.AddListener(() => ConnectWallet(WalletType.Arweave));
 			connectMetamaskButton?.onClick.AddListener(() => ConnectWallet(WalletType.EVM));
@@ -197,7 +198,7 @@ namespace Permaverse.AO
 			// For test in editor
 			if (Application.isEditor && !string.IsNullOrEmpty(editorAddress))
 			{
-				yield return new WaitForSeconds(1);
+				await UniTask.Delay(TimeSpan.FromSeconds(1), cancellationToken: this.GetCancellationTokenOnDestroy());
 				JSONObject json = new JSONObject();
 				json["address"] = editorAddress;
 				json["chain"] = "arweave";
@@ -426,7 +427,7 @@ namespace Permaverse.AO
 			if (!string.IsNullOrEmpty(editorWalletPath) && System.IO.File.Exists(editorWalletPath))
 			{
 				// Use async execution to avoid blocking the main thread
-				StartCoroutine(SendMessageViaNodeScript(pid, data, tags, id, null, objectCallback, methodCallback, isLegacyMode: true));
+				SendMessageViaNodeScriptAsync(pid, data, tags, id, null, objectCallback, methodCallback, isLegacyMode: true, this.GetCancellationTokenOnDestroy()).Forget();
 				return;
 			}
 			else
@@ -464,7 +465,7 @@ namespace Permaverse.AO
 			if (!string.IsNullOrEmpty(editorWalletPath) && System.IO.File.Exists(editorWalletPath))
 			{
 				// Use async execution to avoid blocking the main thread
-				StartCoroutine(SendMessageViaNodeScript(pid, data, tags, id, hyperBeamUrl, objectCallback, methodCallback, isLegacyMode: false));
+				SendMessageViaNodeScriptAsync(pid, data, tags, id, hyperBeamUrl, objectCallback, methodCallback, isLegacyMode: false, this.GetCancellationTokenOnDestroy()).Forget();
 				return;
 			}
 			else
@@ -631,6 +632,139 @@ namespace Permaverse.AO
 				Debug.LogWarning($"[AOConnectManager] Callback object '{objectCallback}' not found");
 			}
 		}
+
+		/// <summary>
+		/// Async version of SendMessageViaNodeScript using UniTask
+		/// </summary>
+		private async UniTask SendMessageViaNodeScriptAsync(string pid, string data, string tags, string id, string hyperBeamUrl, string objectCallback, string methodCallback, bool isLegacyMode = false, CancellationToken cancellationToken = default)
+		{
+			try
+			{
+				string modeLabel = isLegacyMode ? "Legacy AO" : "HyperBEAM";
+				Debug.Log($"[AOConnectManager] Sending {modeLabel} message via Node.js script in editor");
+
+				// Build command arguments
+				var arguments = new List<string>();
+
+				// Add script path
+				string scriptPath = GetNodeScriptPath();
+				if (string.IsNullOrEmpty(scriptPath))
+				{
+					string errorMsg = "aoconnect-editor.js script not found";
+					Debug.LogError($"[AOConnectManager] {errorMsg}");
+					InvokeCallback(objectCallback, methodCallback, id, errorMsg);
+					return;
+				}
+
+				arguments.Add(scriptPath);
+
+				// Add configuration
+				arguments.Add("--process-id");
+				arguments.Add(pid);
+				arguments.Add("--wallet");
+				arguments.Add(editorWalletPath);
+				arguments.Add("--output");
+				arguments.Add("unity");
+				arguments.Add("--mode");
+				arguments.Add(isLegacyMode ? "legacy" : "hyperbeam");
+				arguments.Add("--log-level");
+				arguments.Add("none"); // Use silent mode for production usage
+				
+				// Add HyperBEAM URL only for HyperBEAM mode
+				if (!isLegacyMode && !string.IsNullOrEmpty(hyperBeamUrl))
+				{
+					arguments.Add("--hyperbeam-url");
+					arguments.Add(hyperBeamUrl);
+				}
+				
+				// Add unique ID for request/response correlation
+				if (!string.IsNullOrEmpty(id))
+				{
+					arguments.Add("--unique-id");
+					arguments.Add(id);
+				}
+
+				// Add data if provided using base64 encoding to avoid command line escaping issues
+				if (!string.IsNullOrEmpty(data))
+				{
+					// Encode data as base64 to avoid command line escaping issues with JSON
+					byte[] dataBytes = System.Text.Encoding.UTF8.GetBytes(data);
+					string dataBase64 = Convert.ToBase64String(dataBytes);
+					
+					arguments.Add("--data-base64");
+					arguments.Add(dataBase64);
+					Debug.Log($"[AOConnectManager] Encoding data as base64 ({dataBytes.Length} bytes)");
+					Debug.Log($"[AOConnectManager] Data: {data}");
+				}
+
+				// Parse and add tags using base64 encoding for the entire tags object
+				if (!string.IsNullOrEmpty(tags))
+				{
+					try
+					{
+						var tagsJson = SimpleJSON.JSON.Parse(tags);
+						if (tagsJson.IsArray)
+						{
+							// Convert tags array directly to JSON object format for base64 encoding
+							var tagsObjectJson = new SimpleJSON.JSONObject();
+							for (int i = 0; i < tagsJson.AsArray.Count; i++)
+							{
+								var tagNode = tagsJson.AsArray[i];
+								if (tagNode.HasKey("name") && tagNode.HasKey("value"))
+								{
+									string tagName = tagNode["name"];
+									string tagValue = tagNode["value"];
+									tagsObjectJson[tagName] = tagValue;
+								}
+							}
+							
+							// Encode tags object as base64
+							string tagsObjectJsonString = tagsObjectJson.ToString();
+							byte[] tagsBytes = System.Text.Encoding.UTF8.GetBytes(tagsObjectJsonString);
+							string tagsBase64 = Convert.ToBase64String(tagsBytes);
+							
+							arguments.Add("--tags-base64");
+							arguments.Add(tagsBase64);
+							Debug.Log($"[AOConnectManager] Encoding tags as base64: {tagsObjectJsonString}");
+						}
+					}
+					catch (Exception e)
+					{
+						Debug.LogWarning($"[AOConnectManager] Failed to parse tags: {e.Message}");
+					}
+				}
+
+				// Execute Node.js script asynchronously using NodeJsUtils
+				string output = await NodeJsUtils.ExecuteNodeScriptAsync(arguments.Select(arg => $"\"{arg}\"").ToArray());
+
+				Debug.Log($"[AOConnectManager] Node.js script completed successfully. Output: {output}");
+
+				// Parse response - Node.js script should return the same format as JavaScript sendMessageHyperBeam
+				// Expected format: { "Messages": [], "Spawns": [], "Output": "", "Error": null, "uniqueID": "..." }
+				var response = JSON.Parse(output);
+				
+				// Call the callback with the successful response
+				InvokeCallback(objectCallback, methodCallback, id, null, output);
+				
+				// Log any errors from the response
+				if (response.HasKey("Error") && !response["Error"].IsNull && !string.IsNullOrEmpty(response["Error"]))
+				{
+					Debug.LogWarning($"[AOConnectManager] HyperBEAM response contains error: {response["Error"]}");
+				}
+			}
+			catch (OperationCanceledException)
+			{
+				// Expected when cancellation is requested - no need to log
+			}
+			catch (Exception e)
+			{
+				string errorMsg = $"Failed to execute Node.js script: {e.Message}";
+				Debug.LogError($"[AOConnectManager] {errorMsg}");
+				InvokeCallback(objectCallback, methodCallback, id, errorMsg);
+			}
+		}
+
+		/* COMMENTED OUT - OLD COROUTINE VERSION
 		private IEnumerator SendMessageViaNodeScript(string pid, string data, string tags, string id, string hyperBeamUrl, string objectCallback, string methodCallback, bool isLegacyMode = false)
 		{
 			string modeLabel = isLegacyMode ? "Legacy AO" : "HyperBEAM";
@@ -781,13 +915,14 @@ namespace Permaverse.AO
 				InvokeCallback(objectCallback, methodCallback, id, errorMsg);
 			}
 		}
+		*/
 
 		private string GetNodeScriptPath()
 		{
 			// Look for the script in the AO SDK EditorConnect directory
 			string[] searchPaths = {
 				System.IO.Path.Combine(Application.dataPath, "..", "Packages", "com.permaverse.ao-sdk", "EditorConnect~", "aoconnect-editor.js"),
-				System.IO.Path.Combine(UnityEngine.Application.dataPath, "Packages", "com.permaverse.ao-sdk", "EditorConnect~", "aoconnect-editor.js"),
+				System.IO.Path.Combine(Application.dataPath, "Packages", "com.permaverse.ao-sdk", "EditorConnect~", "aoconnect-editor.js"),
 				System.IO.Path.Combine(System.IO.Directory.GetCurrentDirectory(), "Packages", "com.permaverse.ao-sdk", "EditorConnect~", "aoconnect-editor.js")
 			};
 

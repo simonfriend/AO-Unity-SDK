@@ -1,7 +1,9 @@
 using System;
 using System.Diagnostics;
 using System.IO;
+using System.Threading;
 using System.Threading.Tasks;
+using Cysharp.Threading.Tasks;
 using UnityEngine;
 
 namespace Permaverse.AO
@@ -153,51 +155,51 @@ namespace Permaverse.AO
         }
 
         /// <summary>
-        /// Execute a Node.js script with the given arguments (asynchronous)
-        /// </summary>
-        /// <param name="arguments">Command line arguments for node</param>
-        /// <returns>Process output if successful</returns>
-        public static async Task<string> ExecuteNodeScriptAsync(string[] arguments)
-        {
-            string nodeCommand = FindNodeExecutable();
-            if (string.IsNullOrEmpty(nodeCommand))
-            {
-                throw new Exception("Node.js not found. Please ensure Node.js is installed and accessible.");
-            }
+		/// Execute a Node.js script with the given arguments (asynchronous)
+		/// </summary>
+		/// <param name="arguments">Command line arguments for node</param>
+		/// <returns>Process output if successful</returns>
+		public static async UniTask<string> ExecuteNodeScriptAsync(string[] arguments)
+		{
+			string nodeCommand = FindNodeExecutable();
+			if (string.IsNullOrEmpty(nodeCommand))
+			{
+				throw new Exception("Node.js not found. Please ensure Node.js is installed and accessible.");
+			}
 
-            var processInfo = new ProcessStartInfo
-            {
-                FileName = nodeCommand,
-                Arguments = string.Join(" ", arguments),
-                RedirectStandardOutput = true,
-                RedirectStandardError = true,
-                UseShellExecute = false,
-                CreateNoWindow = true
-            };
+			var processInfo = new ProcessStartInfo
+			{
+				FileName = nodeCommand,
+				Arguments = string.Join(" ", arguments),
+				RedirectStandardOutput = true,
+				RedirectStandardError = true,
+				UseShellExecute = false,
+				CreateNoWindow = true
+			};
 
-            using (var process = new Process { StartInfo = processInfo })
-            {
-                process.Start();
-                
-                var outputTask = process.StandardOutput.ReadToEndAsync();
-                var errorTask = process.StandardError.ReadToEndAsync();
-                
-                await Task.WhenAll(outputTask, errorTask);
-                
-                string output = await outputTask;
-                string error = await errorTask;
-                
-                process.WaitForExit();
-                
-                if (process.ExitCode != 0)
-                {
-                    string errorDetails = !string.IsNullOrEmpty(error) ? error : "No error details available";
-                    string outputDetails = !string.IsNullOrEmpty(output) ? $"\nOutput: {output}" : "";
-                    throw new Exception($"Node.js script failed (exit code {process.ExitCode}):\nError: {errorDetails}{outputDetails}");
-                }
-                
-                return output.Trim();
-            }
-        }
+			using (var process = new Process { StartInfo = processInfo })
+			{
+				process.Start();
+				
+				var outputTask = process.StandardOutput.ReadToEndAsync();
+				var errorTask = process.StandardError.ReadToEndAsync();
+				
+				await UniTask.WhenAll(outputTask.AsUniTask(), errorTask.AsUniTask());
+				
+				string output = await outputTask;
+				string error = await errorTask;
+				
+				process.WaitForExit();
+				
+				if (process.ExitCode != 0)
+				{
+					string errorDetails = !string.IsNullOrEmpty(error) ? error : "No error details available";
+					string outputDetails = !string.IsNullOrEmpty(output) ? $"\nOutput: {output}" : "";
+					throw new Exception($"Node.js script failed (exit code {process.ExitCode}):\nError: {errorDetails}{outputDetails}");
+				}
+				
+				return output.Trim();
+			}
+		}
     }
 }

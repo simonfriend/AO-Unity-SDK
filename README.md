@@ -49,6 +49,37 @@ and click **Add**.
 
 ---
 
+## Required Dependencies
+
+### UniTask (Performance Optimization)
+
+This SDK uses **UniTask** for high-performance async operations with zero allocations. You must install UniTask manually:
+
+**Option 1: Package Manager UI (Recommended)**
+1. Open **Window → Package Manager**
+2. Click **+** → **"Add package from git URL…"**
+3. Paste: `https://github.com/Cysharp/UniTask.git?path=src/UniTask/Assets/Plugins/UniTask`
+4. Click **Add**
+
+**Option 2: manifest.json**
+1. Open `Packages/manifest.json`
+2. Add to dependencies:
+   ```json
+   {
+     "dependencies": {
+       "com.cysharp.unitask": "https://github.com/Cysharp/UniTask.git?path=src/UniTask/Assets/Plugins/UniTask",
+       "com.permaverse.ao-sdk": "https://github.com/simonfriend/AO-Unity-SDK.git"
+     }
+   }
+   ```
+
+**Why UniTask?**
+- 🚀 **Zero GC allocation** async operations
+- ⚡ **Better performance** for real-time networking
+- 🎮 **Unity-optimized** cancellation and lifecycle management
+
+---
+
 ## Usage
 
 After installation, you can:

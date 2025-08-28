@@ -1,17 +1,18 @@
+using System;
 using System.Collections.Generic;
+using Cysharp.Threading.Tasks;
 using UnityEngine;
 using GLTFast;
-using System.Threading.Tasks;
 
 namespace Permaverse.AO
 {
-    public class GLTFAssetManager : MonoBehaviour
-    {
-        public static GLTFAssetManager main { get; private set; }
+	public class GLTFAssetManager : MonoBehaviour
+	{
+		public static GLTFAssetManager main { get; private set; }
 
-        public Dictionary<string, GameObject> assetPrefabs = new Dictionary<string, GameObject>(); //TODO: Serialize it
+		public Dictionary<string, GameObject> assetPrefabs = new Dictionary<string, GameObject>(); //TODO: Serialize it
 
-        private string baseUrl = "https://arweave.net/";
+		private string baseUrl = "https://arweave.net/";
         private Dictionary<string, GltfImport> assetGltf = new Dictionary<string, GltfImport>();
 
         private void Awake()
@@ -25,48 +26,59 @@ namespace Permaverse.AO
             {
                 Destroy(gameObject);
             }
-        }
-
-        // Method to get or download an asset
-        public async Task<GameObject> GetAsset(string assetId, GameObject targetObject = null, ImportSettings settings = null)
+        }        // Method to get or download an asset
+        public async UniTask<GameObject> GetAsset(string assetId, GameObject targetObject = null, ImportSettings settings = null)
         {
-            // Check if the asset is already in the dictionary
-            if (!assetGltf.ContainsKey(assetId))
+            try
             {
-                // Asset not found, download and load it
-                var gltf = new GltfImport();
-
-                // Use default settings if none are provided
-                //if (settings == null)
-                //{
-                //    settings = new ImportSettings
-                //    {
-                //        GenerateMipMaps = true,
-                //        AnisotropicFilterLevel = 3,
-                //        NodeNameMethod = NameImportMethod.OriginalUnique
-                //    };
-                //}
-
-                var success = await gltf.Load(baseUrl + assetId, settings);
-
-                if (success)
+                // Check if the asset is already in the dictionary
+                if (!assetGltf.ContainsKey(assetId))
                 {
-                    // Store the GltfImport instance in the dictionary
-                    assetGltf[assetId] = gltf;
+                    // Asset not found, download and load it
+                    var gltf = new GltfImport();
+
+                    // Use default settings if none are provided
+                    //if (settings == null)
+                    //{
+                    //    settings = new ImportSettings
+                    //    {
+                    //        GenerateMipMaps = true,
+                    //        AnisotropicFilterLevel = 3,
+                    //        NodeNameMethod = NameImportMethod.OriginalUnique
+                    //    };
+                    //}
+
+                    var success = await gltf.Load(baseUrl + assetId, settings);
+
+                    if (success)
+                    {
+                        // Store the GltfImport instance in the dictionary
+                        assetGltf[assetId] = gltf;
+                    }
+                    else
+                    {
+                        Debug.LogError($"Loading asset {assetId} failed!");
+                        return null;
+                    }
                 }
-                else
-                {
-                    Debug.LogError($"Loading asset {assetId} failed!");
-                    return null;
-                }
+
+                // Instantiate the asset at the given transform or create a new GameObject if no transform is provided
+                var gltfInstance = assetGltf[assetId];
+                var gameObject = targetObject != null ? targetObject : new GameObject("glTF_Instance");
+                await gltfInstance.InstantiateMainSceneAsync(gameObject.transform);
+
+                return gameObject;
             }
-
-            // Instantiate the asset at the given transform or create a new GameObject if no transform is provided
-            var gltfInstance = assetGltf[assetId];
-            var gameObject = targetObject != null ? targetObject : new GameObject("glTF_Instance");
-            await gltfInstance.InstantiateMainSceneAsync(gameObject.transform);
-
-            return gameObject;
+            catch (OperationCanceledException)
+            {
+                // Expected when cancellation is requested
+                throw;
+            }
+            catch (Exception ex)
+            {
+                Debug.LogError($"[GLTFAssetManager] Error loading asset {assetId}: {ex.Message}");
+                return null;
+            }
         }
     }
 }

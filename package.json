@@ -1,6 +1,6 @@
 {
   "name": "com.permaverse.ao-sdk",
-  "version": "0.1.0",
+  "version": "0.9.0",
   "displayName": "AO Permaverse SDK",
   "description": "A Unity package enabling AO functionality",
   "unity": "6000.0",
