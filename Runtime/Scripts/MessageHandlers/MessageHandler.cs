@@ -47,7 +47,7 @@ namespace Permaverse.AO
 
 		protected Dictionary<string, (bool, string, string)> results = new Dictionary<string, (bool, string, string)>();
 		protected int requestsCount = 0;
-		
+
 		// Single shared cancellation token source for ALL operations (simple StopAllCoroutines equivalent)
 		private CancellationTokenSource _allOperationsCancellationTokenSource;
 
@@ -63,7 +63,7 @@ namespace Permaverse.AO
 		{
 			// Initialize the single shared cancellation token source
 			_allOperationsCancellationTokenSource = new CancellationTokenSource();
-			
+
 			if (!Application.isEditor)
 			{
 				showLogs = UrlUtilities.GetUrlParameterValue("showLogs") == "true";
@@ -147,126 +147,35 @@ namespace Permaverse.AO
 			await SendRequestAsync(pid, tags, callback, data, method, useMainWallet, walletType, cancellationToken);
 		}
 
-	protected virtual async UniTask SendHyperBeamPathAsync(string url, Action<bool, string> callback, CancellationToken cancellationToken = default)
-	{
-		if (showLogs)
-		{
-			Debug.Log($"[{gameObject.name}] Sending HyperBEAM path request to: {url}");
-		}
-
-		using UnityWebRequest request = UnityWebRequest.Get(url);
-		request.timeout = timeout;
-
-		try
-		{
-			await request.SendWebRequest().ToUniTask(cancellationToken: cancellationToken);
-		}
-		catch (UnityWebRequestException ex)
-		{
-			// UniTask throws UnityWebRequestException for HTTP errors, but we want to handle them as normal flow
-			if (showLogs) Debug.LogError($"[{gameObject.name}] HyperBEAM path Error: {ex.UnityWebRequest.error}");
-		}
-
-		if (request.result != UnityWebRequest.Result.Success)
-		{
-			if (showLogs) Debug.LogError($"[{gameObject.name}] HyperBEAM path Error: {request.error}");
-
-			// Use retry logic before fallback
-			if (resendIfResultFalse)
-			{
-				if (showLogs) Debug.Log($"[{gameObject.name}] Retrying HyperBEAM path request in {resendDelays[resendIndex]} seconds");
-
-				// Fire and forget - don't await, just like the original StartCoroutine
-				RetryHyperBeamPathRequestDelayedAsync(url, callback, resendDelays[resendIndex], GetSharedCancellationToken()).Forget();
-
-				if (increaseResendDelay && resendIndex + 1 < resendDelays.Count)
-				{
-					resendIndex++;
-				}
-			}
-			else if (fallbackToLegacy)
-			{
-				if (showLogs) Debug.Log($"[{gameObject.name}] Falling back to legacy dry-run");
-				// TODO: Implement fallback logic
-				callback?.Invoke(false, $"{{\"Error\":\"{request.error}\"}}");
-			}
-			else
-			{
-				callback?.Invoke(false, $"{{\"Error\":\"{request.error}\"}}");
-			}
-		}
-		else
-		{
-			// Determine if response was serialized by checking URL
-			bool wasSerialized = url.Contains("/serialize~json@1.0");
-			string responseData = ParseHyperBeamResponse(request.downloadHandler.text, wasSerialized);
-
-			if (showLogs)
-			{
-				Debug.Log($"[{gameObject.name}] HyperBEAM Result: {responseData}");
-			}
-
-			callback?.Invoke(true, responseData);
-			resendIndex = 0; // Reset retry index on success
-		}
-	}		protected virtual async UniTask RetryHyperBeamPathRequestDelayedAsync(string url, Action<bool, string> callback, float delay, CancellationToken cancellationToken = default)
-		{
-			await UniTask.Delay(TimeSpan.FromSeconds(delay), cancellationToken: cancellationToken);
-			await SendHyperBeamPathAsync(url, callback, cancellationToken);
-		}
-
-		// === OLD COROUTINE METHODS (Deprecated - Use Async versions instead) ===
-		/*
-		protected virtual IEnumerator SendRequestCoroutineDelayed(string pid, List<Tag> tags, Action<bool, NodeCU> callback, float delay, string data = "", NetworkMethod method = NetworkMethod.Dryrun, bool useMainWallet = false, WalletType walletType = WalletType.Default)
-		{
-			yield return new WaitForSeconds(delay);
-			yield return StartCoroutine(SendRequestCoroutine(pid, tags, callback, data, method, useMainWallet, walletType));
-		}
-
-		protected virtual IEnumerator SendRequestCoroutine(string pid, List<Tag> tags, Action<bool, NodeCU> callback, string data = "", NetworkMethod method = NetworkMethod.Dryrun, bool useMainWallet = false, WalletType walletType = WalletType.Default)
-		{
-			if (method == NetworkMethod.Dryrun)
-			{
-				yield return StartCoroutine(SendHttpPostRequest(pid, tags, callback, data, useMainWallet, walletType));
-			}
-			else if (method == NetworkMethod.HyperBeamMessage)
-			{
-				yield return StartCoroutine(SendHyperBeamMessage(pid, data, tags, callback, useMainWallet, walletType));
-			}
-			else if (doWeb2IfInEditor && Application.isEditor)
-			{
-				yield return StartCoroutine(SendHttpPostRequest(pid, tags, callback, data, useMainWallet, walletType));
-			}
-			else
-			{
-				yield return StartCoroutine(SendMessageToProcess(pid, data, tags, callback, useMainWallet, walletType));
-			}
-		}
-		*/
-
-		/*
-		protected virtual IEnumerator SendHyperBeamPathCoroutine(string url, Action<bool, string> callback)
+		protected virtual async UniTask SendHyperBeamPathAsync(string url, Action<bool, string> callback, CancellationToken cancellationToken = default)
 		{
 			if (showLogs)
 			{
 				Debug.Log($"[{gameObject.name}] Sending HyperBEAM path request to: {url}");
 			}
 
-			UnityWebRequest request = UnityWebRequest.Get(url);
+			using UnityWebRequest request = UnityWebRequest.Get(url);
 			request.timeout = timeout;
 
-			yield return request.SendWebRequest();
+			try
+			{
+				await request.SendWebRequest().ToUniTask(cancellationToken: cancellationToken);
+			}
+			catch (UnityWebRequestException ex)
+			{
+				// UniTask throws UnityWebRequestException for HTTP errors, but we want to handle them as normal flow
+				if (showLogs) Debug.LogError($"[{gameObject.name}] HyperBEAM path Error: {ex.UnityWebRequest.error}");
+			}
 
 			if (request.result != UnityWebRequest.Result.Success)
 			{
-				if (showLogs) Debug.LogError($"[{gameObject.name}] HyperBEAM path Error: {request.error}");
-
 				// Use retry logic before fallback
 				if (resendIfResultFalse)
 				{
 					if (showLogs) Debug.Log($"[{gameObject.name}] Retrying HyperBEAM path request in {resendDelays[resendIndex]} seconds");
 
-					StartCoroutine(RetryHyperBeamPathRequestDelayed(url, callback, resendDelays[resendIndex]));
+					// Fire and forget - don't await, just like the original StartCoroutine
+					RetryHyperBeamPathRequestDelayedAsync(url, callback, resendDelays[resendIndex], GetSharedCancellationToken()).Forget();
 
 					if (increaseResendDelay && resendIndex + 1 < resendDelays.Count)
 					{
@@ -299,217 +208,12 @@ namespace Permaverse.AO
 				resendIndex = 0; // Reset retry index on success
 			}
 		}
-
-		protected virtual IEnumerator RetryHyperBeamPathRequestDelayed(string url, Action<bool, string> callback, float delay)
+		
+		protected virtual async UniTask RetryHyperBeamPathRequestDelayedAsync(string url, Action<bool, string> callback, float delay, CancellationToken cancellationToken = default)
 		{
-			yield return new WaitForSeconds(delay);
-			StartCoroutine(SendHyperBeamPathCoroutine(url, callback));
+			await UniTask.Delay(TimeSpan.FromSeconds(delay), cancellationToken: cancellationToken);
+			await SendHyperBeamPathAsync(url, callback, cancellationToken);
 		}
-		*/
-
-		/*
-		protected IEnumerator SendHttpPostRequest(string pid, List<Tag> tags, Action<bool, NodeCU> callback, string data = "", bool useMainWallet = false, WalletType walletType = WalletType.Default)
-		{
-			string url = baseUrl + pid;
-			string ownerId;
-			if (useMainWallet || string.IsNullOrEmpty(AOConnectManager.main.CurrentSessionAddress))
-			{
-				ownerId = string.IsNullOrEmpty(AOConnectManager.main.CurrentAddress) ? "1234" : AOConnectManager.main.CurrentAddress;
-			}
-			else
-			{
-				ownerId = AOConnectManager.main.CurrentSessionAddress;
-			}
-
-			string jsonBody = CreateJsonBody(pid, ownerId, tags, data);
-
-			if (showLogs)
-			{
-				Debug.Log($"[{gameObject.name}] Sending request | {jsonBody}");
-			}
-
-			UnityWebRequest request = new UnityWebRequest(url, "POST");
-			byte[] bodyRaw = System.Text.Encoding.UTF8.GetBytes(jsonBody);
-			request.uploadHandler = new UploadHandlerRaw(bodyRaw);
-			request.downloadHandler = new DownloadHandlerBuffer();
-			request.timeout = timeout;
-			request.SetRequestHeader("Content-Type", "application/json");
-
-			yield return request.SendWebRequest();
-
-			NodeCU jsonResponse;
-
-			if (request.result != UnityWebRequest.Result.Success)
-			{
-				if (showLogs) Debug.LogError($"[{gameObject.name}] HTTP Post Error: {request.error} | {jsonBody}");
-
-				jsonResponse = new NodeCU($"{{\"Error\":\"{request.error}\"}}");
-
-				if (resendIfResultFalse)
-				{
-					SendRequest(pid, tags, callback, delay: resendDelays[resendIndex], method: NetworkMethod.Dryrun, useMainWallet: useMainWallet, walletType: walletType);
-
-					if (increaseResendDelay && resendIndex + 1 < resendDelays.Count)
-					{
-						resendIndex++;
-					}
-				}
-				else
-				{
-					callback?.Invoke(false, jsonResponse);
-				}
-			}
-			else
-			{
-				jsonResponse = new NodeCU(request.downloadHandler.text);
-
-				if (showLogs)
-				{
-					Debug.Log($"[{gameObject.name}] HTTP Result : {request.downloadHandler.text}");
-				}
-
-				if (ShouldResend(jsonResponse))
-				{
-					SendRequest(pid, tags, callback, delay: resendDelays[resendIndex], method: NetworkMethod.Dryrun, useMainWallet: useMainWallet, walletType: walletType);
-
-					if (increaseResendDelay && resendIndex + 1 < resendDelays.Count)
-					{
-						resendIndex++;
-					}
-				}
-				else
-				{
-					callback?.Invoke(true, jsonResponse);
-					resendIndex = 0;
-				}
-			}
-		}
-		*/
-
-		/*
-		protected IEnumerator SendMessageToProcess(string pid, string data, List<Tag> tags, Action<bool, NodeCU> callback, bool useMainWallet = false, WalletType walletType = WalletType.Default)
-		{
-			// Get the appropriate AddressInfo based on walletType
-			AddressInfo addressInfo = AOConnectManager.main.GetSecondaryWalletInfo(walletType);
-
-			if (addressInfo == null)
-			{
-				Debug.LogError($"No address info found for wallet type: {walletType}");
-				var errorResponse = new NodeCU("{\"Error\":\"No wallet info found for specified type\"}");
-				callback?.Invoke(false, errorResponse);
-				yield break;
-			}
-
-			string ownerId;
-			if (useMainWallet || string.IsNullOrEmpty(addressInfo.sessionKeyInfo?.address))
-			{
-				ownerId = addressInfo.address;
-			}
-			else
-			{
-				ownerId = addressInfo.sessionKeyInfo.address;
-			}
-
-			if (data == null)
-			{
-				data = "";
-			}
-
-			if (showLogs)
-			{
-				Debug.Log($"[{gameObject.name}] Sending message from {ownerId} to {pid} with data: {data}");
-			}
-
-			if (string.IsNullOrEmpty(ownerId))
-			{
-				Debug.LogError("Current address is null!!");
-				var jsonResponse = new NodeCU("{\"Error\":\"Current address is null!\"}");
-				callback?.Invoke(false, jsonResponse);
-				yield break;
-			}
-
-			requestsCount++;
-			string uniqueID = requestsCount.ToString();
-
-			results[uniqueID] = (false, string.Empty, ownerId);
-
-			JSONArray tagsJsonArray = new JSONArray();
-			foreach (var tag in tags)
-			{
-				tagsJsonArray.Add(tag.ToJson());
-			}
-
-			if (AOConnectManager.main.addClientVersionTag && !string.IsNullOrEmpty(AOConnectManager.main.clientVersion))
-			{
-				tagsJsonArray.Add(new Tag("ClientVersion", AOConnectManager.main.clientVersion).ToJson());
-			}
-
-			string tagsStr = tagsJsonArray.ToString();
-
-			AOConnectManager.main.SendMessageToProcess(pid, data, tagsStr, uniqueID, gameObject.name, "MessageCallback", useMainWallet, walletType);
-
-			yield return new WaitUntil(() => results[uniqueID].Item1);
-
-			var (result, response, savedAddress) = results[uniqueID];
-
-			NodeCU networkResponse = new NodeCU(response);
-
-			// Use the same logic as for initial ownerId to determine what address should be expected
-			string currentOwnerId;
-			if (useMainWallet || string.IsNullOrEmpty(addressInfo.sessionKeyInfo?.address))
-			{
-				currentOwnerId = addressInfo.address;
-			}
-			else
-			{
-				currentOwnerId = addressInfo.sessionKeyInfo.address;
-			}
-
-			if (savedAddress != currentOwnerId)
-			{
-				if (showLogs)
-				{
-					Debug.LogError("Address mismatch between request and response.");
-				}
-
-				networkResponse = new NodeCU("{\"Error\":\"Address mismatch between request and response.\"}");
-
-				if (resendIfResultFalse)
-				{
-					SendRequest(pid, tags, callback, delay: resendDelays[resendIndex], data, method: NetworkMethod.Message, useMainWallet: useMainWallet, walletType: walletType);
-
-					if (increaseResendDelay && resendIndex + 1 < resendDelays.Count)
-					{
-						resendIndex++;
-					}
-				}
-				else
-				{
-					callback?.Invoke(false, networkResponse);
-					resendIndex = 0;
-				}
-			}
-			else
-			{
-				if (!networkResponse.IsSuccessful() && resendIfResultFalse)
-				{
-					SendRequest(pid, tags, callback, delay: resendDelays[resendIndex], data, method: NetworkMethod.Message, useMainWallet: useMainWallet, walletType: walletType);
-
-					if (increaseResendDelay && resendIndex + 1 < resendDelays.Count)
-					{
-						resendIndex++;
-					}
-				}
-				else
-				{
-					callback?.Invoke(networkResponse.IsSuccessful(), networkResponse);
-					resendIndex = 0;
-				}
-			}
-
-			results.Remove(uniqueID);
-		}
-		*/
 
 		public void MessageCallback(string jsonResult)
 		{
@@ -630,132 +334,6 @@ namespace Permaverse.AO
 			return response;
 		}
 
-		// === OLD COROUTINE METHODS (Commented out - Use UniTask async versions instead) ===
-		/*
-		protected virtual IEnumerator SendHyperBeamMessage(string pid, string data, List<Tag> tags, Action<bool, NodeCU> callback, bool useMainWallet = false, WalletType walletType = WalletType.Default)
-		{
-			// Get the appropriate AddressInfo based on walletType
-			AddressInfo addressInfo = AOConnectManager.main.GetSecondaryWalletInfo(walletType);
-
-			if (addressInfo == null)
-			{
-				Debug.LogError($"No address info found for wallet type: {walletType}");
-				var errorResponse = new NodeCU("{"Error":"No wallet info found for specified type"}");
-				callback?.Invoke(false, errorResponse);
-				yield break;
-			}
-
-			string ownerId;
-			if (useMainWallet || string.IsNullOrEmpty(addressInfo.sessionKeyInfo?.address))
-			{
-				ownerId = addressInfo.address;
-			}
-			else
-			{
-				ownerId = addressInfo.sessionKeyInfo.address;
-			}
-
-			if (data == null)
-			{
-				data = "";
-			}
-
-			if (showLogs)
-			{
-				Debug.Log($"[{gameObject.name}] Sending HyperBEAM message from {ownerId} to {pid} with data: {data}");
-			}
-
-			if (string.IsNullOrEmpty(ownerId))
-			{
-				Debug.LogError("Current address is null!!");
-				var jsonResponse = new NodeCU("{"Error":"Current address is null!"}");
-				callback?.Invoke(false, jsonResponse);
-				yield break;
-			}
-
-			requestsCount++;
-			string uniqueID = requestsCount.ToString();
-
-			results[uniqueID] = (false, string.Empty, ownerId);
-
-			JSONArray tagsJsonArray = new JSONArray();
-			foreach (var tag in tags)
-			{
-				tagsJsonArray.Add(tag.ToJson());
-			}
-
-			if (AOConnectManager.main.addClientVersionTag && !string.IsNullOrEmpty(AOConnectManager.main.clientVersion))
-			{
-				tagsJsonArray.Add(new Tag("ClientVersion", AOConnectManager.main.clientVersion).ToJson());
-			}
-
-			string tagsStr = tagsJsonArray.ToString();
-
-			AOConnectManager.main.SendMessageToProcessHyperBeam(pid, data, tagsStr, uniqueID, HyperBeamUrl, gameObject.name, "MessageCallback", useMainWallet, walletType);
-
-			yield return new WaitUntil(() => results[uniqueID].Item1);
-
-			var (result, response, savedAddress) = results[uniqueID];
-
-			NodeCU networkResponse = new NodeCU(response);
-
-			// Use the same logic as for initial ownerId to determine what address should be expected
-			string currentOwnerId;
-			if (useMainWallet || string.IsNullOrEmpty(addressInfo.sessionKeyInfo?.address))
-			{
-				currentOwnerId = addressInfo.address;
-			}
-			else
-			{
-				currentOwnerId = addressInfo.sessionKeyInfo.address;
-			}
-
-			if (savedAddress != currentOwnerId)
-			{
-				if (showLogs)
-				{
-					Debug.LogError("Address mismatch between request and response.");
-				}
-
-				networkResponse = new NodeCU("{"Error":"Address mismatch between request and response."}");
-
-				if (resendIfResultFalse)
-				{
-					SendRequest(pid, tags, callback, delay: resendDelays[resendIndex], data, method: NetworkMethod.HyperBeamMessage, useMainWallet: useMainWallet, walletType: walletType);
-
-					if (increaseResendDelay && resendIndex + 1 < resendDelays.Count)
-					{
-						resendIndex++;
-					}
-				}
-				else
-				{
-					callback?.Invoke(false, networkResponse);
-					resendIndex = 0;
-				}
-			}
-			else
-			{
-				if (!networkResponse.IsSuccessful() && resendIfResultFalse)
-				{
-					SendRequest(pid, tags, callback, delay: resendDelays[resendIndex], data, method: NetworkMethod.HyperBeamMessage, useMainWallet: useMainWallet, walletType: walletType);
-
-					if (increaseResendDelay && resendIndex + 1 < resendDelays.Count)
-					{
-						resendIndex++;
-					}
-				}
-				else
-				{
-					callback?.Invoke(networkResponse.IsSuccessful(), networkResponse);
-					resendIndex = 0;
-				}
-			}
-
-			results.Remove(uniqueID);
-		}
-		*/
-
 		public virtual void ForceStopAndReset()
 		{
 			if (showLogs)
@@ -766,7 +344,7 @@ namespace Permaverse.AO
 			// Cancel ALL running operations immediately (UniTask equivalent of StopAllCoroutines)
 			_allOperationsCancellationTokenSource?.Cancel();
 			_allOperationsCancellationTokenSource?.Dispose();
-			
+
 			// Create fresh cancellation token source for new operations
 			_allOperationsCancellationTokenSource = new CancellationTokenSource();
 
@@ -789,7 +367,7 @@ namespace Permaverse.AO
 			{
 				_allOperationsCancellationTokenSource = new CancellationTokenSource();
 			}
-			
+
 			return _allOperationsCancellationTokenSource.Token;
 		}
 
@@ -797,7 +375,7 @@ namespace Permaverse.AO
 		protected virtual async UniTask SendHttpPostRequestAsync(string pid, List<Tag> tags, Action<bool, NodeCU> callback, string data = "", bool useMainWallet = false, WalletType walletType = WalletType.Default, CancellationToken cancellationToken = default)
 		{
 			string url = baseUrl + pid;
-			
+
 			// Get the appropriate AddressInfo based on walletType
 			AddressInfo addressInfo = AOConnectManager.main.GetSecondaryWalletInfo(walletType);
 
@@ -847,14 +425,12 @@ namespace Permaverse.AO
 
 			if (request.result != UnityWebRequest.Result.Success)
 			{
-				if (showLogs) Debug.LogError($"[{gameObject.name}] HTTP Post Error: {request.error} | {jsonBody}");
-
 				jsonResponse = new NodeCU($"{{\"Error\":\"{request.error}\"}}");
 
 				if (resendIfResultFalse)
 				{
-					// Fire and forget - don't await, maintain original behavior
-					SendRequestAsync(pid, tags, callback, data, NetworkMethod.Dryrun, useMainWallet, walletType, GetSharedCancellationToken()).Forget();
+					// Fire and forget - don't await, maintain original behavior with delay
+					SendRequestDelayedAsync(pid, tags, callback, resendDelays[resendIndex], data, NetworkMethod.Dryrun, useMainWallet, walletType, GetSharedCancellationToken()).Forget();
 
 					if (increaseResendDelay && resendIndex + 1 < resendDelays.Count)
 					{
@@ -877,8 +453,8 @@ namespace Permaverse.AO
 
 				if (ShouldResend(jsonResponse))
 				{
-					// Fire and forget - don't await, maintain original behavior  
-					SendRequestAsync(pid, tags, callback, data, NetworkMethod.Dryrun, useMainWallet, walletType, GetSharedCancellationToken()).Forget();
+					// Fire and forget - don't await, maintain original behavior with delay  
+					SendRequestDelayedAsync(pid, tags, callback, resendDelays[resendIndex], data, NetworkMethod.Dryrun, useMainWallet, walletType, GetSharedCancellationToken()).Forget();
 
 					if (increaseResendDelay && resendIndex + 1 < resendDelays.Count)
 					{
@@ -992,8 +568,8 @@ namespace Permaverse.AO
 			{
 				if (resendIfResultFalse)
 				{
-					// Fire and forget - don't await, maintain original behavior
-					SendRequestAsync(pid, tags, callback, data, NetworkMethod.Message, useMainWallet, walletType, GetSharedCancellationToken()).Forget();
+					// Fire and forget - don't await, maintain original behavior with delay
+					SendRequestDelayedAsync(pid, tags, callback, resendDelays[resendIndex], data, NetworkMethod.Message, useMainWallet, walletType, GetSharedCancellationToken()).Forget();
 
 					if (increaseResendDelay && resendIndex + 1 < resendDelays.Count)
 					{
@@ -1100,8 +676,8 @@ namespace Permaverse.AO
 
 				if (resendIfResultFalse)
 				{
-					// Fire and forget - don't await, maintain original behavior
-					SendRequestAsync(pid, tags, callback, data, NetworkMethod.HyperBeamMessage, useMainWallet, walletType, GetSharedCancellationToken()).Forget();
+					// Fire and forget - don't await, maintain original behavior with delay
+					SendRequestDelayedAsync(pid, tags, callback, resendDelays[resendIndex], data, NetworkMethod.HyperBeamMessage, useMainWallet, walletType, GetSharedCancellationToken()).Forget();
 
 					if (increaseResendDelay && resendIndex + 1 < resendDelays.Count)
 					{
@@ -1129,8 +705,8 @@ namespace Permaverse.AO
 				{
 					if (resendIfResultFalse)
 					{
-						// Fire and forget - don't await, maintain original behavior
-						SendRequestAsync(pid, tags, callback, data, NetworkMethod.HyperBeamMessage, useMainWallet, walletType, GetSharedCancellationToken()).Forget();
+						// Fire and forget - don't await, maintain original behavior with delay
+						SendRequestDelayedAsync(pid, tags, callback, resendDelays[resendIndex], data, NetworkMethod.HyperBeamMessage, useMainWallet, walletType, GetSharedCancellationToken()).Forget();
 
 						if (increaseResendDelay && resendIndex + 1 < resendDelays.Count)
 						{
