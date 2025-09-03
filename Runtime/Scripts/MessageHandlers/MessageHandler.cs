@@ -110,17 +110,16 @@ namespace Permaverse.AO
 
 		public virtual void SendHyperBeamStaticRequest(string pid, string cachePath, Action<bool, string> callback, bool now = true, bool serialize = true, bool addCachePath = true)
 		{
-			string path = BuildHyperBeamStaticPath(pid, cachePath, now, serialize, addCachePath);
-			SendHyperBeamPathAsync(path, callback, GetSharedCancellationToken()).Forget();
+			string path = BuildHyperBeamStaticPath(pid, cachePath, now, addCachePath, serialize);
+			SendHyperBeamPathAsync(path, callback, serialize, GetSharedCancellationToken()).Forget();
 		}
 
 		public virtual void SendHyperBeamDynamicRequest(string pid, string methodName, List<Tag> parameters, Action<bool, string> callback, bool now = true, bool serialize = true, string moduleId = null)
 		{
-			string path = BuildHyperBeamDynamicPath(pid, methodName, parameters, now, serialize, moduleId);
-			SendHyperBeamPathAsync(path, callback, GetSharedCancellationToken()).Forget();
+			string path = BuildHyperBeamDynamicPath(pid, methodName, parameters, now, moduleId, serialize);
+			SendHyperBeamPathAsync(path, callback, serialize, GetSharedCancellationToken()).Forget();
 		}
 
-		// UniTask versions - Zero allocation async methods
 		protected virtual async UniTask SendRequestAsync(string pid, List<Tag> tags, Action<bool, NodeCU> callback, string data = null, NetworkMethod method = NetworkMethod.Dryrun, bool useMainWallet = false, WalletType walletType = WalletType.Default, CancellationToken cancellationToken = default)
 		{
 			if (method == NetworkMethod.Dryrun)
@@ -147,7 +146,7 @@ namespace Permaverse.AO
 			await SendRequestAsync(pid, tags, callback, data, method, useMainWallet, walletType, cancellationToken);
 		}
 
-		protected virtual async UniTask SendHyperBeamPathAsync(string url, Action<bool, string> callback, CancellationToken cancellationToken = default)
+		protected virtual async UniTask SendHyperBeamPathAsync(string url, Action<bool, string> callback, bool serialize = true, CancellationToken cancellationToken = default)
 		{
 			if (showLogs)
 			{
@@ -156,6 +155,13 @@ namespace Permaverse.AO
 
 			using UnityWebRequest request = UnityWebRequest.Get(url);
 			request.timeout = timeout;
+
+			// TODO: Add new HyperBEAM headers for serialization (currently commented out)
+			// if (serialize)
+			// {
+			// 	request.SetRequestHeader("accept", "application/json");
+			// 	request.SetRequestHeader("accept-bundle", "true");
+			// }
 
 			try
 			{
@@ -175,7 +181,7 @@ namespace Permaverse.AO
 					if (showLogs) Debug.Log($"[{gameObject.name}] Retrying HyperBEAM path request in {resendDelays[resendIndex]} seconds");
 
 					// Fire and forget - don't await, just like the original StartCoroutine
-					RetryHyperBeamPathRequestDelayedAsync(url, callback, resendDelays[resendIndex], GetSharedCancellationToken()).Forget();
+					RetryHyperBeamPathRequestDelayedAsync(url, callback, serialize, resendDelays[resendIndex], GetSharedCancellationToken()).Forget();
 
 					if (increaseResendDelay && resendIndex + 1 < resendDelays.Count)
 					{
@@ -195,9 +201,8 @@ namespace Permaverse.AO
 			}
 			else
 			{
-				// Determine if response was serialized by checking URL
-				bool wasSerialized = url.Contains("/serialize~json@1.0");
-				string responseData = ParseHyperBeamResponse(request.downloadHandler.text, wasSerialized);
+				// With new header-based approach, response should be JSON directly when serialize=true
+				string responseData = ParseHyperBeamResponse(request.downloadHandler.text, serialize);
 
 				if (showLogs)
 				{
@@ -208,11 +213,11 @@ namespace Permaverse.AO
 				resendIndex = 0; // Reset retry index on success
 			}
 		}
-		
-		protected virtual async UniTask RetryHyperBeamPathRequestDelayedAsync(string url, Action<bool, string> callback, float delay, CancellationToken cancellationToken = default)
+
+		protected virtual async UniTask RetryHyperBeamPathRequestDelayedAsync(string url, Action<bool, string> callback, bool serialize, float delay, CancellationToken cancellationToken = default)
 		{
 			await UniTask.Delay(TimeSpan.FromSeconds(delay), cancellationToken: cancellationToken);
-			await SendHyperBeamPathAsync(url, callback, cancellationToken);
+			await SendHyperBeamPathAsync(url, callback, serialize, cancellationToken);
 		}
 
 		public void MessageCallback(string jsonResult)
@@ -276,7 +281,7 @@ namespace Permaverse.AO
 			return json.ToString();
 		}
 
-		protected string BuildHyperBeamStaticPath(string pid, string cachePath, bool now, bool serialize, bool addCachePath)
+		protected string BuildHyperBeamStaticPath(string pid, string cachePath, bool now, bool addCachePath, bool serialize = true)
 		{
 			string baseUrl = $"{HyperBeamUrl}/{pid}~process@1.0/{(now ? "now" : "compute")}";
 			string cachePrefix = addCachePath ? "/cache" : "";
@@ -284,7 +289,7 @@ namespace Permaverse.AO
 			return $"{baseUrl}{cachePrefix}/{cachePath}{serializeSuffix}";
 		}
 
-		protected string BuildHyperBeamDynamicPath(string pid, string methodName, List<Tag> parameters, bool now, bool serialize, string moduleId = null)
+		protected string BuildHyperBeamDynamicPath(string pid, string methodName, List<Tag> parameters, bool now, string moduleId = null, bool serialize = true)
 		{
 			string baseUrl = $"{HyperBeamUrl}/{pid}~process@1.0/{(now ? "now" : "compute")}";
 			string effectiveModuleId = moduleId ?? luaModuleId; // Use override or default
@@ -292,7 +297,6 @@ namespace Permaverse.AO
 			string serializeSuffix = serialize ? "/serialize~json@1.0" : "";
 			return $"{baseUrl}/~lua@5.3a&module={effectiveModuleId}{paramString}/{methodName}{serializeSuffix}";
 		}
-
 		protected string EncodeParameters(List<Tag> parameters)
 		{
 			if (parameters == null || parameters.Count == 0)
@@ -314,7 +318,8 @@ namespace Permaverse.AO
 		{
 			if (wasSerialized)
 			{
-				// Parse: {"ao-result":"body","body":"{data}","device":"json@1.0"}
+				// With new header-based approach, HyperBEAM should return JSON directly
+				// But we might still need to handle the bundle format: {"ao-result":"body","body":"{data}","device":"json@1.0"}
 				try
 				{
 					JSONNode responseNode = JSON.Parse(response);
