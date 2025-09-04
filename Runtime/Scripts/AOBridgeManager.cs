@@ -3,6 +3,7 @@ using System;
 using System.Collections.Generic;
 using System.Runtime.InteropServices;
 using UnityEngine;
+using Cysharp.Threading.Tasks;
 
 namespace Permaverse.AO
 {
@@ -60,11 +61,12 @@ namespace Permaverse.AO
 
         public void GetDelegationInfo(string arweaveWallet)
         {
-            oracleMessageHandler.SendRequest(oracleAddress, new List<Tag>
+            // Use the new async method for better retry logic
+            oracleMessageHandler.SendRequestAsync(oracleAddress, new List<Tag>
             {
                 new Tag("Action","Get-Delegations"),
                 new Tag("Wallet", arweaveWallet)
-            }, OnDelegationInfoReceived);
+            }, OnDelegationInfoReceived).Forget();
         }
 
         public void OnDelegationInfoReceived(bool result, NodeCU response)
@@ -134,10 +136,11 @@ namespace Permaverse.AO
             data["walletTo"] = stargridWallet;
             data["factor"] = 10000;
 
-            oracleMessageHandler.SendRequest(oracleAddress, new List<Tag>
+            // Use the new async method for better retry logic
+            oracleMessageHandler.SendRequestAsync(oracleAddress, new List<Tag>
             {
                 new Tag("Action","Set-Delegations"),
-            }, OnDelegationChanged, data.ToString(), MessageHandler.NetworkMethod.Message);
+            }, OnDelegationChanged, data.ToString(), MessageHandler.NetworkMethod.Message).Forget();
         }
 
         public void OnDelegationChanged(bool result, NodeCU response)
