@@ -102,6 +102,16 @@ namespace Permaverse.AO
                     return null;
                 }
             }
+            catch (OperationCanceledException)
+            {
+                // Operation was cancelled - exit immediately
+                if (showLogs) 
+                {
+                    Debug.Log($"[{gameObject.name}] Transaction data fetch cancelled");
+                }
+                callback?.Invoke(false, null);
+                return null;
+            }
             catch (Exception ex)
             {
                 if (showLogs) 
@@ -119,8 +129,9 @@ namespace Permaverse.AO
         /// <param name="query">The GraphQL query string</param>
         /// <param name="callback">Optional callback with success status and JSON response</param>
         /// <param name="endpoints">Optional custom endpoints to use (uses default if null)</param>
+        /// <param name="cancellationToken">Optional cancellation token to cancel the request</param>
         /// <returns>JSON response string or null if failed</returns>
-        public virtual async UniTask<string> SendGraphQLQueryAsync(string query, Action<bool, string> callback = null, List<string> endpoints = null)
+        public virtual async UniTask<string> SendGraphQLQueryAsync(string query, Action<bool, string> callback = null, List<string> endpoints = null, CancellationToken cancellationToken = default)
         {
             endpoints = endpoints ?? graphqlEndpoints;
             
@@ -160,7 +171,9 @@ namespace Permaverse.AO
                     request.timeout = timeout;
                     request.SetRequestHeader("Content-Type", "application/json");
 
-                    await request.SendWebRequest().ToUniTask(cancellationToken: GetSharedCancellationToken());
+                    // Use provided cancellation token, or fall back to shared token
+                    var effectiveToken = cancellationToken == default ? GetSharedCancellationToken() : cancellationToken;
+                    await request.SendWebRequest().ToUniTask(cancellationToken: effectiveToken);
 
                     if (request.result == UnityWebRequest.Result.Success)
                     {
@@ -183,6 +196,16 @@ namespace Permaverse.AO
                             Debug.LogWarning($"[{gameObject.name}] GraphQL endpoint {endpoint} failed: {request.error}");
                         }
                     }
+                }
+                catch (OperationCanceledException)
+                {
+                    // Operation was cancelled - don't retry, exit immediately
+                    if (showLogs)
+                    {
+                        Debug.Log($"[{gameObject.name}] GraphQL request cancelled");
+                    }
+                    callback?.Invoke(false, null);
+                    return null;
                 }
                 catch (Exception ex)
                 {
@@ -228,6 +251,7 @@ namespace Permaverse.AO
         /// <param name="first">Number of transactions to fetch (default: 1)</param>
         /// <param name="getData">Whether to also fetch transaction data (default: true)</param>
         /// <param name="endpoints">Optional custom endpoints to use</param>
+        /// <param name="cancellationToken">Optional cancellation token to cancel the request</param>
         /// <returns>Dictionary where key is txID and value is Message, or null if failed</returns>
         public virtual async UniTask<Dictionary<string, Message>> GetProcessTransactionsAsync(
             string processId,
@@ -235,13 +259,14 @@ namespace Permaverse.AO
             Action<bool, Dictionary<string, Message>> callback = null,
             int first = 1,
             bool getData = true,
-            List<string> endpoints = null)
+            List<string> endpoints = null,
+            CancellationToken cancellationToken = default)
         {
             try
             {
                 // Build and send GraphQL query
                 string query = BuildProcessTransactionsQuery(processId, additionalTags, first);
-                string graphqlResponse = await SendGraphQLQueryAsync(query, null, endpoints);
+                string graphqlResponse = await SendGraphQLQueryAsync(query, null, endpoints, cancellationToken);
 
                 if (string.IsNullOrEmpty(graphqlResponse))
                 {
@@ -342,9 +367,19 @@ namespace Permaverse.AO
                 callback?.Invoke(true, result);
                 return result;
             }
-            catch (System.Exception ex)
+            catch (OperationCanceledException)
             {
-                UnityEngine.Debug.LogError($"Error in GetProcessTransactionsAsync: {ex.Message}");
+                // Operation was cancelled - exit immediately
+                if (showLogs)
+                {
+                    Debug.Log($"[{gameObject.name}] GetProcessTransactionsAsync cancelled");
+                }
+                callback?.Invoke(false, null);
+                return null;
+            }
+            catch (Exception ex)
+            {
+                Debug.LogError($"Error in GetProcessTransactionsAsync: {ex.Message}");
                 callback?.Invoke(false, null);
                 return null;
             }

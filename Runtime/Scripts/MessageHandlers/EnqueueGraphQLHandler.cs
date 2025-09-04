@@ -23,6 +23,7 @@ namespace Permaverse.AO
             public Action<bool, string> Callback;
             public List<string> Endpoints;
             public DateTime QueuedTime;
+            public System.Threading.CancellationToken CancellationToken;
         }
 
         protected struct ProcessTransactionsQueueItem
@@ -34,6 +35,7 @@ namespace Permaverse.AO
             public bool GetData;
             public List<string> Endpoints;
             public DateTime QueuedTime;
+            public System.Threading.CancellationToken CancellationToken;
         }
 
         /// <summary>
@@ -42,7 +44,8 @@ namespace Permaverse.AO
         public virtual void EnqueueGraphQLQuery(
             string query, 
             Action<bool, string> callback = null, 
-            List<string> endpoints = null)
+            List<string> endpoints = null,
+            System.Threading.CancellationToken cancellationToken = default)
         {
             if (requestQueue.Count >= maxQueueSize)
             {
@@ -59,7 +62,8 @@ namespace Permaverse.AO
                 Query = query,
                 Callback = callback,
                 Endpoints = endpoints,
-                QueuedTime = DateTime.Now
+                QueuedTime = DateTime.Now,
+                CancellationToken = cancellationToken
             };
 
             requestQueue.Enqueue(queueItem);
@@ -85,7 +89,8 @@ namespace Permaverse.AO
             Action<bool, Dictionary<string, Message>> callback = null,
             int first = 1,
             bool getData = true,
-            List<string> endpoints = null)
+            List<string> endpoints = null,
+            System.Threading.CancellationToken cancellationToken = default)
         {
             if (processRequestQueue.Count >= maxQueueSize)
             {
@@ -105,7 +110,8 @@ namespace Permaverse.AO
                 First = first,
                 GetData = getData,
                 Endpoints = endpoints,
-                QueuedTime = DateTime.Now
+                QueuedTime = DateTime.Now,
+                CancellationToken = cancellationToken
             };
 
             processRequestQueue.Enqueue(queueItem);
@@ -155,14 +161,14 @@ namespace Permaverse.AO
                     {
                         var queueItem = requestQueue.Dequeue();
                         activeRequests++;
-                        ProcessGraphQLRequestAsync(queueItem, cancellationToken).Forget();
+                        ProcessGraphQLRequestAsync(queueItem, queueItem.CancellationToken).Forget();
                     }
                     // Process process transactions queue
                     else if (processRequestQueue.Count > 0)
                     {
                         var queueItem = processRequestQueue.Dequeue();
                         activeRequests++;
-                        ProcessProcessTransactionsRequestAsync(queueItem, cancellationToken).Forget();
+                        ProcessProcessTransactionsRequestAsync(queueItem, queueItem.CancellationToken).Forget();
                     }
 
                     // Wait between processing items
@@ -203,7 +209,16 @@ namespace Permaverse.AO
                     Debug.Log($"[{gameObject.name}] Processing GraphQL query from queue");
                 }
 
-                await SendGraphQLQueryAsync(queueItem.Query, queueItem.Callback, queueItem.Endpoints);
+                await SendGraphQLQueryAsync(queueItem.Query, queueItem.Callback, queueItem.Endpoints, queueItem.CancellationToken);
+            }
+            catch (OperationCanceledException)
+            {
+                // Request was cancelled - don't log as error
+                if (showLogs)
+                {
+                    Debug.Log($"[{gameObject.name}] GraphQL request cancelled");
+                }
+                queueItem.Callback?.Invoke(false, "{\"Error\":\"Request cancelled\"}");
             }
             catch (System.Exception ex)
             {
@@ -239,9 +254,19 @@ namespace Permaverse.AO
                     queueItem.Callback,
                     queueItem.First,
                     queueItem.GetData,
-                    queueItem.Endpoints);
+                    queueItem.Endpoints,
+                    queueItem.CancellationToken);
             }
-            catch (System.Exception ex)
+            catch (OperationCanceledException)
+            {
+                // Request was cancelled - don't log as error
+                if (showLogs)
+                {
+                    Debug.Log($"[{gameObject.name}] Process transactions request cancelled");
+                }
+                queueItem.Callback?.Invoke(false, null);
+            }
+            catch (Exception ex)
             {
                 if (showLogs)
                 {

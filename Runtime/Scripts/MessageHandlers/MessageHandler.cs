@@ -167,6 +167,13 @@ namespace Permaverse.AO
 			{
 				await request.SendWebRequest().ToUniTask(cancellationToken: cancellationToken);
 			}
+			catch (OperationCanceledException)
+			{
+				// Request was cancelled - don't retry, exit immediately
+				if (showLogs) Debug.Log($"[{gameObject.name}] HyperBEAM path request cancelled");
+				callback?.Invoke(false, "Request cancelled");
+				return;
+			}
 			catch (UnityWebRequestException ex)
 			{
 				// UniTask throws UnityWebRequestException for HTTP errors, but we want to handle them as normal flow
@@ -419,6 +426,14 @@ namespace Permaverse.AO
 			try
 			{
 				await request.SendWebRequest().ToUniTask(cancellationToken: cancellationToken);
+			}
+			catch (OperationCanceledException)
+			{
+				// Request was cancelled - don't retry, exit immediately
+				if (showLogs) Debug.Log($"[{gameObject.name}] HTTP Post request cancelled");
+				var cancelledResponse = new NodeCU("{\"Error\":\"Request cancelled\"}");
+				callback?.Invoke(false, cancelledResponse);
+				return;
 			}
 			catch (UnityWebRequestException ex)
 			{
