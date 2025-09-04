@@ -35,6 +35,7 @@ namespace Permaverse.AO
             public bool GetData;
             public List<string> Endpoints;
             public DateTime QueuedTime;
+            public long? FromTimestamp;
             public System.Threading.CancellationToken CancellationToken;
         }
 
@@ -90,7 +91,8 @@ namespace Permaverse.AO
             int first = 1,
             bool getData = true,
             List<string> endpoints = null,
-            System.Threading.CancellationToken cancellationToken = default)
+            System.Threading.CancellationToken cancellationToken = default,
+            long? fromTimestamp = null)
         {
             if (processRequestQueue.Count >= maxQueueSize)
             {
@@ -111,6 +113,7 @@ namespace Permaverse.AO
                 GetData = getData,
                 Endpoints = endpoints,
                 QueuedTime = DateTime.Now,
+                FromTimestamp = fromTimestamp,
                 CancellationToken = cancellationToken
             };
 
@@ -255,7 +258,8 @@ namespace Permaverse.AO
                     queueItem.First,
                     queueItem.GetData,
                     queueItem.Endpoints,
-                    queueItem.CancellationToken);
+                    queueItem.CancellationToken,
+                    queueItem.FromTimestamp);
             }
             catch (OperationCanceledException)
             {

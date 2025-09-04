@@ -252,6 +252,7 @@ namespace Permaverse.AO
         /// <param name="getData">Whether to also fetch transaction data (default: true)</param>
         /// <param name="endpoints">Optional custom endpoints to use</param>
         /// <param name="cancellationToken">Optional cancellation token to cancel the request</param>
+        /// <param name="fromTimestamp">Optional timestamp filter - only search transactions ingested after this time (Unix timestamp)</param>
         /// <returns>Dictionary where key is txID and value is Message, or null if failed</returns>
         public virtual async UniTask<Dictionary<string, Message>> GetProcessTransactionsAsync(
             string processId,
@@ -260,12 +261,13 @@ namespace Permaverse.AO
             int first = 1,
             bool getData = true,
             List<string> endpoints = null,
-            CancellationToken cancellationToken = default)
+            CancellationToken cancellationToken = default,
+            long? fromTimestamp = null)
         {
             try
             {
                 // Build and send GraphQL query
-                string query = BuildProcessTransactionsQuery(processId, additionalTags, first);
+                string query = BuildProcessTransactionsQuery(processId, additionalTags, first, fromTimestamp);
                 string graphqlResponse = await SendGraphQLQueryAsync(query, null, endpoints, cancellationToken);
 
                 if (string.IsNullOrEmpty(graphqlResponse))
@@ -390,7 +392,11 @@ namespace Permaverse.AO
         /// <summary>
         /// Build a GraphQL query for transactions from a specific process
         /// </summary>
-        protected string BuildProcessTransactionsQuery(string processId, List<Tag> additionalTags, int first)
+        /// <param name="processId">The process ID to query</param>
+        /// <param name="additionalTags">Additional tags to filter by</param>
+        /// <param name="first">Number of transactions to fetch</param>
+        /// <param name="fromTimestamp">Optional timestamp filter - only search transactions ingested after this time</param>
+        protected string BuildProcessTransactionsQuery(string processId, List<Tag> additionalTags, int first, long? fromTimestamp = null)
         {
             // Build the tags array in proper GraphQL syntax (not JSON)
             var tagsList = new List<string>();
@@ -412,11 +418,18 @@ namespace Permaverse.AO
 
             string tagsString = $"[{string.Join(", ", tagsList)}]";
 
+            // Build the ingested_at filter if fromTimestamp is provided
+            string ingestedAtFilter = "";
+            if (fromTimestamp.HasValue)
+            {
+                ingestedAtFilter = $"ingested_at: {{min: {fromTimestamp.Value}}}";
+            }
+
             // Build the complete GraphQL query string
             string graphqlQuery = $@"{{
             transactions(
                 first: {first}
-                tags: {tagsString}
+                tags: {tagsString}{(string.IsNullOrEmpty(ingestedAtFilter) ? "" : $"\n                {ingestedAtFilter}")}
             ) {{
                 edges {{
                     node {{
