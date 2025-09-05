@@ -130,7 +130,7 @@ namespace Permaverse.AO
         /// <param name="endpoints">Optional custom endpoints to use (uses default if null)</param>
         /// <param name="cancellationToken">Optional cancellation token to cancel the request</param>
         /// <returns>Tuple with success status and JSON response string</returns>
-        public virtual async UniTask<(bool success, string result)> SendGraphQLQueryAsync(string query, Action<bool, string> callback = null, List<string> endpoints = null, CancellationToken cancellationToken = default)
+        public virtual async UniTask<(bool success, string result)> SendGraphQLQueryAsync(string query, List<string> endpoints = null, Action<bool, string> callback = null, CancellationToken cancellationToken = default)
         {
             // Use shared cancellation token if none provided
             if (cancellationToken == default)
@@ -292,18 +292,18 @@ namespace Permaverse.AO
         public virtual async UniTask<(bool success, Dictionary<string, Message> result)> GetProcessTransactionsAsync(
             string processId,
             List<Tag> additionalTags = null,
-            Action<bool, Dictionary<string, Message>> callback = null,
             int first = 1,
             bool getData = true,
             List<string> endpoints = null,
-            CancellationToken cancellationToken = default,
-            long? fromTimestamp = null)
+            long? fromTimestamp = null,
+            Action<bool, Dictionary<string, Message>> callback = null,
+            CancellationToken cancellationToken = default)
         {
             try
             {
                 // Build and send GraphQL query
                 string query = BuildProcessTransactionsQuery(processId, additionalTags, first, fromTimestamp);
-                (bool graphqlSuccess, string graphqlResponse) = await SendGraphQLQueryAsync(query, null, endpoints, cancellationToken);
+                (bool graphqlSuccess, string graphqlResponse) = await SendGraphQLQueryAsync(query, endpoints, callback: null, cancellationToken);
 
                 if (!graphqlSuccess || string.IsNullOrEmpty(graphqlResponse))
                 {

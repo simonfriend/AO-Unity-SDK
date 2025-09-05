@@ -47,8 +47,6 @@ namespace Permaverse.AO
 		[Header("HyperBEAM Settings")]
 		[Tooltip("Override HyperBEAM URL. If empty, uses AOConnectManager.main.hyperBeamUrl")]
 		public string hyperBeamUrlOverride = "";  // Empty = use AOConnectManager default
-		// public string luaModuleId = "";
-		// public bool fallbackToLegacy = true;
 
 		// Property to get effective HyperBEAM URL
 		protected string HyperBeamUrl =>
@@ -105,20 +103,6 @@ namespace Permaverse.AO
 			}
 		}
 
-		// [Obsolete("Use SendRequestAsync instead")]
-		// public virtual void SendRequest(string pid, List<Tag> tags, Action<bool, NodeCU> callback, string data = null, NetworkMethod method = NetworkMethod.Dryrun, bool useMainWallet = false, WalletType walletType = WalletType.Default)
-		// {
-		// 	// Backward compatibility: just ignore the tuple return type
-		// 	SendRequestAsync(pid, tags, callback, data, method, useMainWallet, walletType, this.GetCancellationTokenOnDestroy()).Forget();
-		// }
-
-		// [Obsolete("Use SendRequestAsync instead")]
-		// public virtual void SendRequest(string pid, List<Tag> tags, Action<bool, NodeCU> callback, float delay, string data = null, NetworkMethod method = NetworkMethod.Dryrun, bool useMainWallet = false, WalletType walletType = WalletType.Default)
-		// {
-		// 	// Backward compatibility: just ignore the tuple return type
-		// 	SendRequestDelayedAsync(pid, tags, delay, callback, data, method, useMainWallet, walletType, GetSharedCancellationToken()).Forget();
-		// }
-
 		/// <summary>
 		/// Send request and return result directly (async version with proper retry handling)
 		/// </summary>
@@ -131,7 +115,7 @@ namespace Permaverse.AO
 		/// <param name="walletType">Wallet type</param>
 		/// <param name="cancellationToken">Cancellation token</param>
 		/// <returns>Tuple with success status and result</returns>
-		public virtual async UniTask<(bool success, NodeCU result)> SendRequestAsync(string pid, List<Tag> tags, Action<bool, NodeCU> callback = null, string data = null, NetworkMethod method = NetworkMethod.Dryrun, bool useMainWallet = false, WalletType walletType = WalletType.Default, CancellationToken cancellationToken = default)
+		public virtual async UniTask<(bool success, NodeCU result)> SendRequestAsync(string pid, List<Tag> tags, string data = null, NetworkMethod method = NetworkMethod.Dryrun, bool useMainWallet = false, WalletType walletType = WalletType.Default, Action<bool, NodeCU> callback = null, CancellationToken cancellationToken = default)
 		{
 			for (int attempt = 0; attempt <= maxRetries; attempt++)
 			{
@@ -193,7 +177,7 @@ namespace Permaverse.AO
 		/// <summary>
 		/// Send delayed request and return result directly (async version)
 		/// </summary>
-		public virtual async UniTask<(bool success, NodeCU result)> SendRequestDelayedAsync(string pid, List<Tag> tags, float delay, Action<bool, NodeCU> callback = null, string data = null, NetworkMethod method = NetworkMethod.Dryrun, bool useMainWallet = false, WalletType walletType = WalletType.Default, CancellationToken cancellationToken = default)
+		public virtual async UniTask<(bool success, NodeCU result)> SendRequestDelayedAsync(string pid, List<Tag> tags, float delay, string data = null, NetworkMethod method = NetworkMethod.Dryrun, bool useMainWallet = false, WalletType walletType = WalletType.Default, Action<bool, NodeCU> callback = null, CancellationToken cancellationToken = default)
 		{
 			try
 			{
@@ -205,7 +189,7 @@ namespace Permaverse.AO
 				return (false, null);
 			}
 			
-			return await SendRequestAsync(pid, tags, callback, data, method, useMainWallet, walletType, cancellationToken);
+			return await SendRequestAsync(pid, tags, data, method, useMainWallet, walletType, callback, cancellationToken);
 		}
 
 		/// <summary>
@@ -475,148 +459,6 @@ namespace Permaverse.AO
 		}
 
 		/// <summary>
-		/// Send HyperBeam static request and return result directly (async version)
-		/// TODO: Remove - functionality moved to HyperBeamPathHandler
-		/// </summary>
-		/*
-		public virtual async UniTask<string> SendHyperBeamStaticRequestAsync(string pid, string cachePath, Action<bool, string> callback = null, bool now = true, bool serialize = true, bool addCachePath = true, CancellationToken cancellationToken = default)
-		{
-			string path = BuildHyperBeamStaticPath(pid, cachePath, now, addCachePath, serialize);
-			return await SendHyperBeamPathInternalAsync(path, callback, serialize, cancellationToken);
-		}
-		*/
-
-		/// <summary>
-		/// Send HyperBeam dynamic request and return tuple result for consistency with other methods
-		/// TODO: Remove - functionality moved to HyperBeamPathHandler
-		/// </summary>
-		/*
-		public virtual async UniTask<(bool success, string result)> SendHyperBeamDynamicRequestAsync(string pid, string methodName, List<Tag> parameters, Action<bool, string> callback = null, bool now = true, bool serialize = true, string moduleId = null, CancellationToken cancellationToken = default)
-		{
-			string path = BuildHyperBeamDynamicPath(pid, methodName, parameters, now, moduleId, serialize);
-			var (legacySuccess, legacyResult) = await SendHyperBeamPathAsync(path, callback, serialize, cancellationToken);
-			return (legacySuccess, legacyResult);
-		}
-		*/
-
-		/// <summary>
-		/// Send HyperBeam path request with centralized retry logic
-		/// TODO: Remove - functionality moved to HyperBeamPathHandler
-		/// </summary>
-		/*
-		public virtual async UniTask<(bool success, string result)> SendHyperBeamPathAsync(string url, Action<bool, string> callback = null, bool serialize = true, CancellationToken cancellationToken = default)
-		{
-			int currentRetryIndex = 0;
-			string lastResult = null;
-			bool lastSuccess = false;
-
-			while (true)
-			{
-				// Try the request
-				(bool success, string result) = await SendHyperBeamPathOnceAsync(url, serialize, cancellationToken);
-				
-				lastSuccess = success;
-				lastResult = result;
-
-				// If successful, call callback and return immediately
-				if (success)
-				{
-					callback?.Invoke(true, result);
-					return (true, result);
-				}
-
-				// If we don't retry on failure, call callback and return immediately
-				if (!resendIfResultFalse)
-				{
-					callback?.Invoke(false, result);
-					return (false, result);
-				}
-
-				// If we've exhausted all retries, call callback with final failure and return
-				if (currentRetryIndex >= resendDelays.Count)
-				{
-					callback?.Invoke(false, result);
-					return (false, result);
-				}
-
-				// Wait for the retry delay
-				float delay = resendDelays[currentRetryIndex];
-				if (showLogs) Debug.Log($"[{gameObject.name}] Retrying HyperBEAM path request in {delay} seconds (attempt {currentRetryIndex + 2})");
-				
-				try
-				{
-					await UniTask.Delay(TimeSpan.FromSeconds(delay), cancellationToken: cancellationToken);
-				}
-				catch (OperationCanceledException)
-				{
-					// Request was cancelled during retry delay
-					callback?.Invoke(false, "Request cancelled");
-					return (false, "Request cancelled");
-				}
-
-				// Move to next retry delay if configured to increase
-				if (increaseResendDelay && currentRetryIndex + 1 < resendDelays.Count)
-				{
-					currentRetryIndex++;
-				}
-			}
-		}
-		*/
-
-		/// <summary>
-		/// Send a single HyperBeam path request attempt without retry logic
-		/// TODO: Remove - functionality moved to HyperBeamPathHandler
-		/// </summary>
-		/*
-		private async UniTask<(bool success, string result)> SendHyperBeamPathOnceAsync(string url, bool serialize = true, CancellationToken cancellationToken = default)
-		{
-			if (showLogs)
-			{
-				Debug.Log($"[{gameObject.name}] Sending HyperBEAM path request to: {url}");
-			}
-
-			using UnityWebRequest request = UnityWebRequest.Get(url);
-			request.timeout = timeout;
-
-			// TODO: Add new HyperBEAM headers for serialization (currently commented out)
-			// if (serialize)
-			// {
-			// 	request.SetRequestHeader("accept", "application/json");
-			// 	request.SetRequestHeader("accept-bundle", "true");
-			// }
-
-			try
-			{
-				await request.SendWebRequest().ToUniTask(cancellationToken: cancellationToken);
-			}
-			catch (OperationCanceledException)
-			{
-				// Request was cancelled - don't retry, exit immediately
-				if (showLogs) Debug.Log($"[{gameObject.name}] HyperBEAM path request cancelled");
-				return (false, "Request cancelled");
-			}
-			catch (UnityWebRequestException ex)
-			{
-				// UniTask throws UnityWebRequestException for HTTP errors, but we want to handle them as normal flow
-				if (showLogs) Debug.LogError($"[{gameObject.name}] HyperBEAM path Error: {ex.UnityWebRequest.error}");
-			}
-
-			if (request.result != UnityWebRequest.Result.Success)
-			{
-				string errorResult = $"{{\"Error\":\"{request.error}\"}}";
-				return (false, errorResult);
-			}
-			else
-			{
-				// With new header-based approach, response should be JSON directly when serialize=true
-				string responseData = ParseHyperBeamResponse(request.downloadHandler.text, serialize);
-				if (showLogs) Debug.Log($"[{gameObject.name}] HyperBEAM path Success: {responseData}");
-				return (true, responseData);
-			}
-		}
-		*/
-
-		/// <summary>
 		/// Legacy internal method for compatibility - just calls the new async method without retries
 		/// </summary>
 		[Obsolete("Internal method used by legacy retry logic - will be removed")]
@@ -638,107 +480,6 @@ namespace Permaverse.AO
 			callback?.Invoke(success, result);
 			return success ? result : null;
 		}
-
-		/// <summary>
-		/// TODO: Remove - obsolete HyperBeam path methods, functionality moved to HyperBeamPathHandler
-		/// </summary>
-		/*
-		[Obsolete("Use the new SendHyperBeamPathAsync that returns tuple")]
-		protected virtual async UniTask SendHyperBeamPathLegacyAsync(string url, Action<bool, string> callback, bool serialize = true, CancellationToken cancellationToken = default)
-		{
-			if (showLogs)
-			{
-				Debug.Log($"[{gameObject.name}] Sending HyperBEAM path request to: {url}");
-			}
-
-			using UnityWebRequest request = UnityWebRequest.Get(url);
-			request.timeout = timeout;
-
-			// TODO: Add new HyperBEAM headers for serialization (currently commented out)
-			// if (serialize)
-			// {
-			// 	request.SetRequestHeader("accept", "application/json");
-			// 	request.SetRequestHeader("accept-bundle", "true");
-			// }
-
-			try
-			{
-				await request.SendWebRequest().ToUniTask(cancellationToken: cancellationToken);
-			}
-			catch (OperationCanceledException)
-			{
-				// Request was cancelled - don't retry, exit immediately
-				if (showLogs) Debug.Log($"[{gameObject.name}] HyperBEAM path request cancelled");
-				callback?.Invoke(false, "Request cancelled");
-				return;
-			}
-			catch (UnityWebRequestException ex)
-			{
-				// UniTask throws UnityWebRequestException for HTTP errors, but we want to handle them as normal flow
-				if (showLogs) Debug.LogError($"[{gameObject.name}] HyperBEAM path Error: {ex.UnityWebRequest.error}");
-			}
-
-			if (request.result != UnityWebRequest.Result.Success)
-			{
-				// Use retry logic before fallback
-				if (resendIfResultFalse)
-				{
-					if (showLogs) Debug.Log($"[{gameObject.name}] Retrying HyperBEAM path request in {resendDelays[resendIndex]} seconds");
-
-					// Fire and forget - don't await, just like the original StartCoroutine
-					RetryHyperBeamPathRequestDelayedAsync(url, callback, serialize, resendDelays[resendIndex], GetSharedCancellationToken()).Forget();
-
-					if (increaseResendDelay && resendIndex + 1 < resendDelays.Count)
-					{
-						resendIndex++;
-					}
-				}
-				else
-				{
-					callback?.Invoke(false, $"{{\"Error\":\"{request.error}\"}}");
-				}
-			}
-			else
-			{
-				// With new header-based approach, response should be JSON directly when serialize=true
-				string responseData = ParseHyperBeamResponse(request.downloadHandler.text, serialize);
-
-				if (showLogs)
-				{
-					Debug.Log($"[{gameObject.name}] HyperBEAM Result: {responseData}");
-				}
-
-				callback?.Invoke(true, responseData);
-				resendIndex = 0; // Reset retry index on success
-			}
-		}
-
-		/// <summary>
-		/// Internal HyperBEAM path method that returns result and still calls callback
-		/// </summary>
-		protected virtual async UniTask<string> SendHyperBeamPathInternalAsync(string url, Action<bool, string> callback, bool serialize = true, CancellationToken cancellationToken = default)
-		{
-			string result = null;
-			
-			// Create a wrapper callback that captures the result
-			Action<bool, string> wrapperCallback = (success, response) =>
-			{
-				result = success ? response : null;
-				callback?.Invoke(success, response); // Still call original callback if provided
-			};
-
-			// Call the existing method with our wrapper callback
-			await SendHyperBeamPathAsync(url, wrapperCallback, serialize, cancellationToken);
-			
-			return result;
-		}
-
-		protected virtual async UniTask RetryHyperBeamPathRequestDelayedAsync(string url, Action<bool, string> callback, bool serialize, float delay, CancellationToken cancellationToken = default)
-		{
-			await UniTask.Delay(TimeSpan.FromSeconds(delay), cancellationToken: cancellationToken);
-			await SendHyperBeamPathAsync(url, callback, serialize, cancellationToken);
-		}
-		*/
 
 		public void MessageCallback(string jsonResult)
 		{
@@ -800,86 +541,6 @@ namespace Permaverse.AO
 
 			return json.ToString();
 		}
-
-		/// <summary>
-		/// TODO: Remove - HyperBeam path builder methods, functionality moved to HyperBeamPathHandler
-		/// </summary>
-		/*
-		protected string BuildHyperBeamStaticPath(string pid, string cachePath, bool now, bool addCachePath, bool serialize = true)
-		{
-			string baseUrl = $"{HyperBeamUrl}/{pid}~process@1.0/{(now ? "now" : "compute")}";
-			string cachePrefix = addCachePath ? "/cache" : "";
-			string serializeSuffix = serialize ? "/serialize~json@1.0" : "";
-			return $"{baseUrl}{cachePrefix}/{cachePath}{serializeSuffix}";
-		}
-
-		protected string BuildHyperBeamDynamicPath(string pid, string methodName, List<Tag> parameters, bool now, string moduleId = null, bool serialize = true)
-		{
-			string baseUrl = $"{HyperBeamUrl}/{pid}~process@1.0/{(now ? "now" : "compute")}";
-			string effectiveModuleId = moduleId ?? luaModuleId; // Use override or default
-			string paramString = EncodeParameters(parameters);
-			string serializeSuffix = serialize ? "/serialize~json@1.0" : "";
-			return $"{baseUrl}/~lua@5.3a&module={effectiveModuleId}{paramString}/{methodName}{serializeSuffix}";
-		}
-		protected string EncodeParameters(List<Tag> parameters)
-		{
-			if (parameters == null || parameters.Count == 0)
-				return "";
-
-			var paramStrings = new List<string>();
-			foreach (var param in parameters)
-			{
-				// For now, treat all as strings (no +string suffix)
-				// Later we can extend this to detect types: PARAM+integer=value, PARAM+boolean=value
-				string encodedValue = UnityWebRequest.EscapeURL(param.Value);
-				paramStrings.Add($"{param.Name}={encodedValue}");
-			}
-
-			return "&" + string.Join("&", paramStrings);
-		}
-
-		protected string ParseHyperBeamResponse(string response, bool wasSerialized)
-		{
-			if (wasSerialized)
-			{
-				// With new header-based approach, HyperBEAM should return JSON directly
-				// But we might still need to handle the bundle format: {"ao-result":"body","body":"{data}","device":"json@1.0"}
-				try
-				{
-					JSONNode responseNode = JSON.Parse(response);
-					if (responseNode.HasKey("body"))
-					{
-						return responseNode["body"];
-					}
-				}
-				catch (System.Exception e)
-				{
-					if (showLogs) Debug.LogError($"[{gameObject.name}] Failed to parse serialized HyperBEAM response: {e.Message}");
-					return response; // Return raw response as fallback
-				}
-			}
-
-			// Return response as-is for non-serialized
-			return response;
-		}
-	
-					JSONNode responseNode = JSON.Parse(response);
-					if (responseNode.HasKey("body"))
-					{
-						return responseNode["body"];
-					}
-				}
-				catch (System.Exception e)
-				{
-					if (showLogs) Debug.LogError($"[{gameObject.name}] Failed to parse serialized HyperBEAM response: {e.Message}");
-					return response; // Return raw response as fallback
-				}
-			}
-
-			// Return response as-is for non-serialized
-			return response;
-		}
-		*/
 
 		public virtual void ForceStopAndReset()
 		{

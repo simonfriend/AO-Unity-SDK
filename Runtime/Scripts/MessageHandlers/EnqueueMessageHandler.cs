@@ -129,11 +129,11 @@ namespace Permaverse.AO
 					var (success, result) = await SendRequestAsync(
 						request.pid, 
 						request.tags, 
-						null, 
 						request.data, 
 						request.method, 
 						request.useMainWallet, 
 						request.walletType, 
+						callback: null,
 						request.cancellationToken
 					);
 

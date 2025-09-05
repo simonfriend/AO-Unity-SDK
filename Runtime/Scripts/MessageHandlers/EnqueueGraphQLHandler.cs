@@ -237,7 +237,7 @@ namespace Permaverse.AO
                     Debug.Log($"[{gameObject.name}] Processing GraphQL query from queue");
                 }
 
-                (bool success, string result) = await SendGraphQLQueryAsync(queueItem.Query, null, queueItem.Endpoints, queueItem.CancellationToken);
+                (bool success, string result) = await SendGraphQLQueryAsync(queueItem.Query, queueItem.Endpoints, callback: null, queueItem.CancellationToken);
                 
                 // Call the callback with the result
                 queueItem.Callback?.Invoke(success, result);
@@ -282,12 +282,12 @@ namespace Permaverse.AO
                 (bool success, var result) = await GetProcessTransactionsAsync(
                     queueItem.ProcessId,
                     queueItem.AdditionalTags,
-                    null,
                     queueItem.First,
                     queueItem.GetData,
                     queueItem.Endpoints,
-                    queueItem.CancellationToken,
-                    queueItem.FromTimestamp);
+                    queueItem.FromTimestamp,
+                    callback: null,
+                    queueItem.CancellationToken);
                 
                 // Call the callback with the result
                 queueItem.Callback?.Invoke(success, result);

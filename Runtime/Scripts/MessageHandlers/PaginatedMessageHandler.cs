@@ -99,7 +99,7 @@ namespace Permaverse.AO
 			else
 			{
 				// Use await for cleaner async flow
-				var (success, result) = await SendRequestAsync(pid, completeTags, null, null, method, useMainWallet);
+				var (success, result) = await SendRequestAsync(pid, completeTags, null, method, useMainWallet);
 				unifiedCallback(success, result);
 			}
 		}

@@ -152,7 +152,7 @@ namespace Permaverse.AO
                             OnBazarDataReceived?.Invoke(bazarProfileData);
                         };
 
-                        SendRequestAsync(profileId, tags, callback, useMainWallet: true).Forget();
+                        SendRequestAsync(profileId, tags, useMainWallet: true, callback: callback).Forget();
                         return;
                     }
                 }
@@ -160,7 +160,7 @@ namespace Permaverse.AO
                 OnBazarDataReceived?.Invoke(null);
             };
 
-            SendRequestAsync(pid, tags, callback, data: data, useMainWallet: true).Forget();
+                        SendRequestAsync(pid, tags, data: data, useMainWallet: true, callback: callback).Forget();
         }
 
         public void GetAssetInfo(string assetID, string bazarID = null)
@@ -192,7 +192,7 @@ namespace Permaverse.AO
                 OnAssetDataReceived?.Invoke(currentBazarID, assetID, count);
             };
 
-            SendRequestAsync(assetID, tags, callback, data: data, useMainWallet: true).Forget();
+            SendRequestAsync(assetID, tags, data: data, useMainWallet: true, callback: callback).Forget();
         }
     }
 }
