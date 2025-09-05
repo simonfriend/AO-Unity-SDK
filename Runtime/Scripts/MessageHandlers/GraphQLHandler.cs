@@ -9,11 +9,12 @@ using SimpleJSON;
 
 namespace Permaverse.AO
 {
+    /// <summary>
+    /// GraphQL handler for Arweave network communication with endpoint fallback and retry logic
+    /// Provides async methods for GraphQL queries and transaction data fetching
+    /// </summary>
     public class GraphQLHandler : MonoBehaviour
     {
-        [Header("Debug")]
-        public bool showLogs = true;
-
         [Header("GraphQL Settings")]
         [Tooltip("GraphQL endpoints to try in order (fallback system)")]
         public List<string> graphqlEndpoints = new List<string>
@@ -25,30 +26,28 @@ namespace Permaverse.AO
         };
 
         [Header("Retry Settings")]
-        public bool retryOnFailure = true;
-        public List<int> retryDelays = new List<int> { 3, 10, 30 };
-        public bool increaseRetryDelay = true;
+        [Tooltip("Whether to retry failed requests")]
+        public bool resendIfResultFalse = true;
+        
+        [Tooltip("Maximum number of retry attempts for failed requests")]
+        public int maxRetries = 5;
+        
+        [Tooltip("Delay between retry attempts")]
+        public List<int> resendDelays = new List<int> { 1, 5, 10, 30 };
+        
+        protected float defaultDelay = 5f;
 
         protected int timeout = 120;
-        protected int currentEndpointIndex = 0;
-        protected int retryIndex = 0;
 
-        // Single shared cancellation token source for ALL operations
+        // Single shared cancellation token source for ALL operations (simple StopAllCoroutines equivalent)
         private CancellationTokenSource _allOperationsCancellationTokenSource;
+
+        protected bool showLogs => AOConnectManager.main.showLogs;
 
         protected virtual void Start()
         {
             // Initialize the single shared cancellation token source
             _allOperationsCancellationTokenSource = new CancellationTokenSource();
-
-            if (!Application.isEditor)
-            {
-                showLogs = UrlUtilities.GetUrlParameterValue("showLogs") == "true";
-            }
-            else
-            {
-                showLogs = true;
-            }
         }
 
         private void OnDestroy()
@@ -124,7 +123,7 @@ namespace Permaverse.AO
         }
 
         /// <summary>
-        /// Send a GraphQL query (async method with optional callback)
+        /// Send a GraphQL query with centralized retry logic (async method with optional callback)
         /// </summary>
         /// <param name="query">The GraphQL query string</param>
         /// <param name="callback">Optional callback with success status and JSON response</param>
@@ -133,6 +132,12 @@ namespace Permaverse.AO
         /// <returns>JSON response string or null if failed</returns>
         public virtual async UniTask<string> SendGraphQLQueryAsync(string query, Action<bool, string> callback = null, List<string> endpoints = null, CancellationToken cancellationToken = default)
         {
+            // Use shared cancellation token if none provided
+            if (cancellationToken == default)
+            {
+                cancellationToken = GetSharedCancellationToken();
+            }
+
             endpoints = endpoints ?? graphqlEndpoints;
             
             if (endpoints == null || endpoints.Count == 0)
@@ -142,7 +147,67 @@ namespace Permaverse.AO
                 return null;
             }
 
-            // Try each endpoint in order
+            for (int attempt = 0; attempt <= maxRetries; attempt++)
+            {
+                try
+                {
+                    // Try the request with endpoint fallback
+                    (bool success, string result) = await SendGraphQLQueryOnceAsync(query, endpoints, cancellationToken);
+                    
+                    // If successful, call callback and return immediately
+                    if (success)
+                    {
+                        callback?.Invoke(true, result);
+                        return result;
+                    }
+                    
+                    // If we don't retry on failure, call callback and return immediately
+                    if (!resendIfResultFalse)
+                    {
+                        callback?.Invoke(false, result);
+                        return result;
+                    }
+                    
+                    // If this was the last attempt, return failure
+                    if (attempt == maxRetries)
+                    {
+                        callback?.Invoke(false, result);
+                        return result;
+                    }
+                    
+                    // Calculate delay for next retry - use last delay if we run out of delays
+                    float delay = attempt < resendDelays.Count ? resendDelays[attempt] : (resendDelays.Count > 0 ? resendDelays[resendDelays.Count - 1] : defaultDelay);
+                    if (showLogs) Debug.Log($"[{gameObject.name}] Retrying GraphQL request in {delay} seconds (attempt {attempt + 2})");
+                    
+                    await UniTask.Delay(TimeSpan.FromSeconds(delay), cancellationToken: cancellationToken);
+                }
+                catch (OperationCanceledException)
+                {
+                    // Request was cancelled during retry delay
+                    if (showLogs) Debug.Log($"[{gameObject.name}] GraphQL request cancelled");
+                    callback?.Invoke(false, null);
+                    return null;
+                }
+                catch (Exception ex)
+                {
+                    if (showLogs) Debug.LogError($"[{gameObject.name}] GraphQL request failed: {ex.Message}");
+                    if (attempt == maxRetries)
+                    {
+                        callback?.Invoke(false, null);
+                        return null;
+                    }
+                }
+            }
+
+            return null;
+        }
+
+        /// <summary>
+        /// Send a single GraphQL query attempt with endpoint fallback (no retry logic)
+        /// </summary>
+        private async UniTask<(bool success, string result)> SendGraphQLQueryOnceAsync(string query, List<string> endpoints, CancellationToken cancellationToken = default)
+        {
+            // Try each endpoint in order until one succeeds
             for (int i = 0; i < endpoints.Count; i++)
             {
                 string endpoint = endpoints[i];
@@ -171,9 +236,7 @@ namespace Permaverse.AO
                     request.timeout = timeout;
                     request.SetRequestHeader("Content-Type", "application/json");
 
-                    // Use provided cancellation token, or fall back to shared token
-                    var effectiveToken = cancellationToken == default ? GetSharedCancellationToken() : cancellationToken;
-                    await request.SendWebRequest().ToUniTask(cancellationToken: effectiveToken);
+                    await request.SendWebRequest().ToUniTask(cancellationToken: cancellationToken);
 
                     if (request.result == UnityWebRequest.Result.Success)
                     {
@@ -184,10 +247,7 @@ namespace Permaverse.AO
                             Debug.Log($"[{gameObject.name}] GraphQL Success: {responseData}");
                         }
 
-                        // Success
-                        retryIndex = 0;
-                        callback?.Invoke(true, responseData);
-                        return responseData;
+                        return (true, responseData);
                     }
                     else
                     {
@@ -199,13 +259,9 @@ namespace Permaverse.AO
                 }
                 catch (OperationCanceledException)
                 {
-                    // Operation was cancelled - don't retry, exit immediately
-                    if (showLogs)
-                    {
-                        Debug.Log($"[{gameObject.name}] GraphQL request cancelled");
-                    }
-                    callback?.Invoke(false, null);
-                    return null;
+                    // Re-throw cancellation - let the outer catch handle it
+                    if (showLogs) Debug.Log($"[{gameObject.name}] GraphQL request cancelled");
+                    throw;
                 }
                 catch (Exception ex)
                 {
@@ -214,32 +270,11 @@ namespace Permaverse.AO
                         Debug.LogError($"[{gameObject.name}] GraphQL request exception: {ex.Message}");
                     }
                 }
-
-                // If this was the last endpoint and we have retry enabled, try with delays
-                if (i == endpoints.Count - 1 && retryOnFailure && retryIndex < retryDelays.Count)
-                {
-                    if (showLogs)
-                    {
-                        Debug.Log($"[{gameObject.name}] All endpoints failed, retrying in {retryDelays[retryIndex]} seconds");
-                    }
-
-                    await UniTask.Delay(TimeSpan.FromSeconds(retryDelays[retryIndex]), cancellationToken: GetSharedCancellationToken());
-
-                    if (increaseRetryDelay)
-                    {
-                        retryIndex++;
-                    }
-
-                    // Retry with all endpoints again
-                    i = -1; // Will be incremented to 0 in next loop iteration
-                    continue;
-                }
             }
 
-            // All endpoints and retries failed
-            if (showLogs) Debug.LogError($"[{gameObject.name}] All GraphQL endpoints failed after retries");
-            callback?.Invoke(false, null);
-            return null;
+            // All endpoints failed
+            if (showLogs) Debug.LogError($"[{gameObject.name}] All GraphQL endpoints failed");
+            return (false, null);
         }
 
         /// <summary>
@@ -399,13 +434,13 @@ namespace Permaverse.AO
         protected string BuildProcessTransactionsQuery(string processId, List<Tag> additionalTags, int first, long? fromTimestamp = null)
         {
             // Build the tags array in proper GraphQL syntax (not JSON)
-            var tagsList = new List<string>();
-
-            // Add From-Process tag
-            tagsList.Add($"{{name: \"From-Process\", values: [\"{processId}\"]}}");
-
-            // Add Data-Protocol tag for AO transactions (helps with faster indexing)
-            tagsList.Add($"{{name: \"Data-Protocol\", values: [\"ao\"]}}");
+            var tagsList = new List<string>
+            {
+                // Add From-Process tag
+                $"{{name: \"From-Process\", values: [\"{processId}\"]}}",
+                // Add Data-Protocol tag for AO transactions (helps with faster indexing)
+                $"{{name: \"Data-Protocol\", values: [\"ao\"]}}"
+            };
 
             // Add additional tags if provided
             if (additionalTags != null)
@@ -457,16 +492,12 @@ namespace Permaverse.AO
                 Debug.Log($"[{gameObject.name}] ForceStopAndReset called - stopping ALL GraphQL operations");
             }
 
-            // Cancel ALL running operations
+            // Cancel ALL running operations (UniTask equivalent of StopAllCoroutines)
             _allOperationsCancellationTokenSource?.Cancel();
             _allOperationsCancellationTokenSource?.Dispose();
 
-            // Create fresh cancellation token source
+            // Create fresh cancellation token source for new operations
             _allOperationsCancellationTokenSource = new CancellationTokenSource();
-
-            // Reset state
-            retryIndex = 0;
-            currentEndpointIndex = 0;
         }
 
         /// <summary>

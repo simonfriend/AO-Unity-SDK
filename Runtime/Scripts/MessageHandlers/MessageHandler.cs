@@ -1,7 +1,6 @@
 using UnityEngine;
 using UnityEngine.Networking;
 using System;
-using System.Collections;
 using System.Collections.Generic;
 using System.Threading;
 using Cysharp.Threading.Tasks;
@@ -14,7 +13,6 @@ namespace Permaverse.AO
 	/// 
 	/// RECOMMENDED API:
 	/// - Use SendRequestAsync() for new code - provides proper retry handling and returns results
-	/// - Use SendHyperBeamStaticRequestAsync() and SendHyperBeamDynamicRequestAsync() for HyperBeam requests
 	/// 
 	/// LEGACY API (obsolete but still supported):
 	/// - SendRequest() methods use callbacks only and have less predictable retry behavior
@@ -27,33 +25,30 @@ namespace Permaverse.AO
 	/// </summary>
 	public class MessageHandler : MonoBehaviour
 	{
-		[Header("Debug")]
-		public bool showLogs = true;
-
 		[Header("ResendSettings")]
+		[Tooltip("Maximum number of retry attempts for failed requests")]
+		public int maxRetries = 5;
+				
 		public bool resendIfMissingMessages = true;
 		public bool resendIfMissingTargetMessage = true;
 		public int targetMessageIndex = 0;
 		public bool resendIfTargetMessageNoData = true;
 		public bool resendIfResultFalse = true;
-		public List<int> resendDelays = new List<int> { 3, 30, 60 };
-		public bool increaseResendDelay = true;
+		public List<int> resendDelays = new List<int> { 1, 5, 10, 30 };
 		public float refreshAfterTimeInError = 10 * 60;
 		public bool refreshEnabled = true;
 
 		public bool doWeb2IfInEditor = false;
 
 		private float elapsedTimeSinceFirstErrorMessage = 0;
-
-
-		private int resendIndex = 0;
+		private bool hasRecentErrors = false;
 		protected string baseUrl = "https://cu.ao-testnet.xyz/dry-run?process-id=";
 
 		[Header("HyperBEAM Settings")]
 		[Tooltip("Override HyperBEAM URL. If empty, uses AOConnectManager.main.hyperBeamUrl")]
 		public string hyperBeamUrlOverride = "";  // Empty = use AOConnectManager default
-		public string luaModuleId = "";
-		public bool fallbackToLegacy = true;
+		// public string luaModuleId = "";
+		// public bool fallbackToLegacy = true;
 
 		// Property to get effective HyperBEAM URL
 		protected string HyperBeamUrl =>
@@ -64,8 +59,12 @@ namespace Permaverse.AO
 		protected Dictionary<string, (bool, string, string)> results = new Dictionary<string, (bool, string, string)>();
 		protected int requestsCount = 0;
 
+		protected float defaultDelay = 5f;
+
 		// Single shared cancellation token source for ALL operations (simple StopAllCoroutines equivalent)
 		private CancellationTokenSource _allOperationsCancellationTokenSource;
+		protected bool showLogs => AOConnectManager.main.showLogs;
+
 
 		[Serializable]
 		public enum NetworkMethod
@@ -79,15 +78,6 @@ namespace Permaverse.AO
 		{
 			// Initialize the single shared cancellation token source
 			_allOperationsCancellationTokenSource = new CancellationTokenSource();
-
-			if (!Application.isEditor)
-			{
-				showLogs = UrlUtilities.GetUrlParameterValue("showLogs") == "true";
-			}
-			else
-			{
-				showLogs = true;
-			}
 		}
 
 		private void OnDestroy()
@@ -99,34 +89,35 @@ namespace Permaverse.AO
 
 		private void Update()
 		{
-			if (resendIndex > 0 && refreshEnabled)
+			if (hasRecentErrors && refreshEnabled)
 			{
 				elapsedTimeSinceFirstErrorMessage += Time.deltaTime;
 				if (elapsedTimeSinceFirstErrorMessage > refreshAfterTimeInError)
 				{
 					elapsedTimeSinceFirstErrorMessage = 0;
+					hasRecentErrors = false;
 					AOConnectManager.main.RefreshWebPage();
 				}
 			}
-			else
+			else if (!hasRecentErrors)
 			{
 				elapsedTimeSinceFirstErrorMessage = 0;
 			}
 		}
 
-		[Obsolete("Use SendRequestAsync instead")]
-		public virtual void SendRequest(string pid, List<Tag> tags, Action<bool, NodeCU> callback, string data = null, NetworkMethod method = NetworkMethod.Dryrun, bool useMainWallet = false, WalletType walletType = WalletType.Default)
-		{
-			// Backward compatibility: just ignore the tuple return type
-			SendRequestAsync(pid, tags, callback, data, method, useMainWallet, walletType, this.GetCancellationTokenOnDestroy()).Forget();
-		}
+		// [Obsolete("Use SendRequestAsync instead")]
+		// public virtual void SendRequest(string pid, List<Tag> tags, Action<bool, NodeCU> callback, string data = null, NetworkMethod method = NetworkMethod.Dryrun, bool useMainWallet = false, WalletType walletType = WalletType.Default)
+		// {
+		// 	// Backward compatibility: just ignore the tuple return type
+		// 	SendRequestAsync(pid, tags, callback, data, method, useMainWallet, walletType, this.GetCancellationTokenOnDestroy()).Forget();
+		// }
 
-		[Obsolete("Use SendRequestAsync instead")]
-		public virtual void SendRequest(string pid, List<Tag> tags, Action<bool, NodeCU> callback, float delay, string data = null, NetworkMethod method = NetworkMethod.Dryrun, bool useMainWallet = false, WalletType walletType = WalletType.Default)
-		{
-			// Backward compatibility: just ignore the tuple return type
-			SendRequestDelayedAsync(pid, tags, delay, callback, data, method, useMainWallet, walletType, GetSharedCancellationToken()).Forget();
-		}
+		// [Obsolete("Use SendRequestAsync instead")]
+		// public virtual void SendRequest(string pid, List<Tag> tags, Action<bool, NodeCU> callback, float delay, string data = null, NetworkMethod method = NetworkMethod.Dryrun, bool useMainWallet = false, WalletType walletType = WalletType.Default)
+		// {
+		// 	// Backward compatibility: just ignore the tuple return type
+		// 	SendRequestDelayedAsync(pid, tags, delay, callback, data, method, useMainWallet, walletType, GetSharedCancellationToken()).Forget();
+		// }
 
 		/// <summary>
 		/// Send request and return result directly (async version with proper retry handling)
@@ -142,45 +133,41 @@ namespace Permaverse.AO
 		/// <returns>Tuple with success status and result</returns>
 		public virtual async UniTask<(bool success, NodeCU result)> SendRequestAsync(string pid, List<Tag> tags, Action<bool, NodeCU> callback = null, string data = null, NetworkMethod method = NetworkMethod.Dryrun, bool useMainWallet = false, WalletType walletType = WalletType.Default, CancellationToken cancellationToken = default)
 		{
-			int currentRetryIndex = 0;
-			NodeCU lastResult = null;
-			bool lastSuccess = false;
-
-			while (true)
+			for (int attempt = 0; attempt <= maxRetries; attempt++)
 			{
-				// Try the request
-				(bool success, NodeCU result) = await SendRequestOnceAsync(pid, tags, data, method, useMainWallet, walletType, cancellationToken);
-				
-				lastSuccess = success;
-				lastResult = result;
-
-				// If successful, call callback and return immediately
-				if (success)
-				{
-					callback?.Invoke(true, result);
-					return (true, result);
-				}
-
-				// If we don't retry on failure, call callback and return immediately
-				if (!resendIfResultFalse)
-				{
-					callback?.Invoke(false, null);
-					return (false, null);
-				}
-
-				// If we've exhausted all retries, call callback with final failure and return
-				if (currentRetryIndex >= resendDelays.Count)
-				{
-					callback?.Invoke(false, null);
-					return (false, null);
-				}
-
-				// Wait for the retry delay
-				float delay = resendDelays[currentRetryIndex];
-				if (showLogs) Debug.Log($"[{gameObject.name}] Retrying request in {delay} seconds (attempt {currentRetryIndex + 2})");
-				
 				try
 				{
+					// Try the request
+					(bool success, NodeCU result) = await SendRequestOnceAsync(pid, tags, data, method, useMainWallet, walletType, cancellationToken);
+					
+					// If successful, call callback and return immediately
+					if (success)
+					{
+						hasRecentErrors = false; // Reset error tracking on success
+						callback?.Invoke(true, result);
+						return (true, result);
+					}
+
+					// If we don't retry on failure, call callback and return immediately
+					if (!resendIfResultFalse)
+					{
+						callback?.Invoke(false, result);
+						return (false, result);
+					}
+
+					// If this was the last attempt, return failure
+					if (attempt == maxRetries)
+					{
+						hasRecentErrors = true; // Track that we had repeated failures
+						callback?.Invoke(false, result);
+						return (false, result);
+					}
+
+					// Calculate delay for next retry - use last delay if we run out of delays
+					float delay = attempt < resendDelays.Count ? resendDelays[attempt] : (resendDelays.Count > 0 ? resendDelays[resendDelays.Count - 1] : defaultDelay);
+					if (showLogs) Debug.Log($"[{gameObject.name}] Retrying request in {delay} seconds (attempt {attempt + 2})");
+					
+					hasRecentErrors = true; // Track that we're having errors requiring retries
 					await UniTask.Delay(TimeSpan.FromSeconds(delay), cancellationToken: cancellationToken);
 				}
 				catch (OperationCanceledException)
@@ -189,13 +176,18 @@ namespace Permaverse.AO
 					callback?.Invoke(false, null);
 					return (false, null);
 				}
-
-				// Move to next retry delay if configured to increase
-				if (increaseResendDelay && currentRetryIndex + 1 < resendDelays.Count)
+				catch (Exception ex)
 				{
-					currentRetryIndex++;
+					if (showLogs) Debug.LogError($"[{gameObject.name}] Request failed: {ex.Message}");
+					if (attempt == maxRetries)
+					{
+						callback?.Invoke(false, null);
+						return (false, null);
+					}
 				}
 			}
+
+			return (false, null);
 		}
 
 		/// <summary>
@@ -484,30 +476,34 @@ namespace Permaverse.AO
 
 		/// <summary>
 		/// Send HyperBeam static request and return result directly (async version)
+		/// TODO: Remove - functionality moved to HyperBeamPathHandler
 		/// </summary>
+		/*
 		public virtual async UniTask<string> SendHyperBeamStaticRequestAsync(string pid, string cachePath, Action<bool, string> callback = null, bool now = true, bool serialize = true, bool addCachePath = true, CancellationToken cancellationToken = default)
 		{
 			string path = BuildHyperBeamStaticPath(pid, cachePath, now, addCachePath, serialize);
 			return await SendHyperBeamPathInternalAsync(path, callback, serialize, cancellationToken);
 		}
+		*/
 
 		/// <summary>
 		/// Send HyperBeam dynamic request and return tuple result for consistency with other methods
+		/// TODO: Remove - functionality moved to HyperBeamPathHandler
 		/// </summary>
+		/*
 		public virtual async UniTask<(bool success, string result)> SendHyperBeamDynamicRequestAsync(string pid, string methodName, List<Tag> parameters, Action<bool, string> callback = null, bool now = true, bool serialize = true, string moduleId = null, CancellationToken cancellationToken = default)
 		{
 			string path = BuildHyperBeamDynamicPath(pid, methodName, parameters, now, moduleId, serialize);
-			return await SendHyperBeamPathAsync(path, callback, serialize, cancellationToken);
+			var (legacySuccess, legacyResult) = await SendHyperBeamPathAsync(path, callback, serialize, cancellationToken);
+			return (legacySuccess, legacyResult);
 		}
+		*/
 
 		/// <summary>
 		/// Send HyperBeam path request with centralized retry logic
+		/// TODO: Remove - functionality moved to HyperBeamPathHandler
 		/// </summary>
-		/// <param name="url">URL to request</param>
-		/// <param name="callback">Optional callback for final result only</param>
-		/// <param name="serialize">Whether to serialize response</param>
-		/// <param name="cancellationToken">Cancellation token</param>
-		/// <returns>Tuple with success status and result</returns>
+		/*
 		public virtual async UniTask<(bool success, string result)> SendHyperBeamPathAsync(string url, Action<bool, string> callback = null, bool serialize = true, CancellationToken cancellationToken = default)
 		{
 			int currentRetryIndex = 0;
@@ -565,10 +561,13 @@ namespace Permaverse.AO
 				}
 			}
 		}
+		*/
 
 		/// <summary>
 		/// Send a single HyperBeam path request attempt without retry logic
+		/// TODO: Remove - functionality moved to HyperBeamPathHandler
 		/// </summary>
+		/*
 		private async UniTask<(bool success, string result)> SendHyperBeamPathOnceAsync(string url, bool serialize = true, CancellationToken cancellationToken = default)
 		{
 			if (showLogs)
@@ -605,11 +604,6 @@ namespace Permaverse.AO
 			if (request.result != UnityWebRequest.Result.Success)
 			{
 				string errorResult = $"{{\"Error\":\"{request.error}\"}}";
-				if (fallbackToLegacy)
-				{
-					if (showLogs) Debug.Log($"[{gameObject.name}] HyperBEAM path failed, would fallback to legacy");
-					// TODO: Implement fallback logic if needed
-				}
 				return (false, errorResult);
 			}
 			else
@@ -620,6 +614,7 @@ namespace Permaverse.AO
 				return (true, responseData);
 			}
 		}
+		*/
 
 		/// <summary>
 		/// Legacy internal method for compatibility - just calls the new async method without retries
@@ -644,8 +639,10 @@ namespace Permaverse.AO
 			return success ? result : null;
 		}
 
-
-
+		/// <summary>
+		/// TODO: Remove - obsolete HyperBeam path methods, functionality moved to HyperBeamPathHandler
+		/// </summary>
+		/*
 		[Obsolete("Use the new SendHyperBeamPathAsync that returns tuple")]
 		protected virtual async UniTask SendHyperBeamPathLegacyAsync(string url, Action<bool, string> callback, bool serialize = true, CancellationToken cancellationToken = default)
 		{
@@ -696,12 +693,6 @@ namespace Permaverse.AO
 						resendIndex++;
 					}
 				}
-				else if (fallbackToLegacy)
-				{
-					if (showLogs) Debug.Log($"[{gameObject.name}] Falling back to legacy dry-run");
-					// TODO: Implement fallback logic
-					callback?.Invoke(false, $"{{\"Error\":\"{request.error}\"}}");
-				}
 				else
 				{
 					callback?.Invoke(false, $"{{\"Error\":\"{request.error}\"}}");
@@ -747,6 +738,7 @@ namespace Permaverse.AO
 			await UniTask.Delay(TimeSpan.FromSeconds(delay), cancellationToken: cancellationToken);
 			await SendHyperBeamPathAsync(url, callback, serialize, cancellationToken);
 		}
+		*/
 
 		public void MessageCallback(string jsonResult)
 		{
@@ -809,6 +801,10 @@ namespace Permaverse.AO
 			return json.ToString();
 		}
 
+		/// <summary>
+		/// TODO: Remove - HyperBeam path builder methods, functionality moved to HyperBeamPathHandler
+		/// </summary>
+		/*
 		protected string BuildHyperBeamStaticPath(string pid, string cachePath, bool now, bool addCachePath, bool serialize = true)
 		{
 			string baseUrl = $"{HyperBeamUrl}/{pid}~process@1.0/{(now ? "now" : "compute")}";
@@ -866,6 +862,24 @@ namespace Permaverse.AO
 			// Return response as-is for non-serialized
 			return response;
 		}
+	
+					JSONNode responseNode = JSON.Parse(response);
+					if (responseNode.HasKey("body"))
+					{
+						return responseNode["body"];
+					}
+				}
+				catch (System.Exception e)
+				{
+					if (showLogs) Debug.LogError($"[{gameObject.name}] Failed to parse serialized HyperBEAM response: {e.Message}");
+					return response; // Return raw response as fallback
+				}
+			}
+
+			// Return response as-is for non-serialized
+			return response;
+		}
+		*/
 
 		public virtual void ForceStopAndReset()
 		{
@@ -882,7 +896,7 @@ namespace Permaverse.AO
 			_allOperationsCancellationTokenSource = new CancellationTokenSource();
 
 			// Reset retry state
-			resendIndex = 0;
+			hasRecentErrors = false;
 			elapsedTimeSinceFirstErrorMessage = 0;
 
 			// Clear any pending results

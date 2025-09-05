@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using Cysharp.Threading.Tasks;
 using SimpleJSON;
 using UnityEngine;
 
@@ -151,7 +152,7 @@ namespace Permaverse.AO
                             OnBazarDataReceived?.Invoke(bazarProfileData);
                         };
 
-                        SendRequest(profileId, tags, callback, useMainWallet: true);
+                        SendRequestAsync(profileId, tags, callback, useMainWallet: true).Forget();
                         return;
                     }
                 }
@@ -159,7 +160,7 @@ namespace Permaverse.AO
                 OnBazarDataReceived?.Invoke(null);
             };
 
-            SendRequest(pid, tags, callback, data: data, useMainWallet: true);
+            SendRequestAsync(pid, tags, callback, data: data, useMainWallet: true).Forget();
         }
 
         public void GetAssetInfo(string assetID, string bazarID = null)
@@ -191,7 +192,7 @@ namespace Permaverse.AO
                 OnAssetDataReceived?.Invoke(currentBazarID, assetID, count);
             };
 
-            SendRequest(assetID, tags, callback, data: data, useMainWallet: true);
+            SendRequestAsync(assetID, tags, callback, data: data, useMainWallet: true).Forget();
         }
     }
 }

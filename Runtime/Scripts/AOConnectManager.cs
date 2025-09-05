@@ -109,6 +109,7 @@ namespace Permaverse.AO
 
 		[Header("Settings")]
 		public bool checkNotifications;
+		public bool showLogs = false;
 
 		[Header("HyperBEAM")]
 		public string hyperBeamUrl = "http://localhost:8734";
@@ -175,10 +176,23 @@ namespace Permaverse.AO
 			else
 			{
 				Destroy(gameObject);
+				return;
 			}
 
 			CultureInfo.DefaultThreadCurrentCulture = CultureInfo.InvariantCulture;
 			CultureInfo.DefaultThreadCurrentUICulture = CultureInfo.InvariantCulture;
+
+			if (!Application.isEditor)
+			{
+				if (Application.platform == RuntimePlatform.WebGLPlayer)
+				{
+					showLogs = UrlUtilities.GetUrlParameterValue("showLogs") == "true";
+				}
+			}
+			else
+			{
+				showLogs = true;
+			}
 		}
 
 		async void Start()
@@ -589,7 +603,7 @@ namespace Permaverse.AO
 		private void InvokeCallback(string objectCallback, string methodCallback, string id, string errorMessage = null, string output = null)
 		{
 			string json;
-			
+
 			if (!string.IsNullOrEmpty(errorMessage))
 			{
 				// Create error response in the same format as JavaScript functions
@@ -669,14 +683,14 @@ namespace Permaverse.AO
 				arguments.Add(isLegacyMode ? "legacy" : "hyperbeam");
 				arguments.Add("--log-level");
 				arguments.Add("none"); // Use silent mode for production usage
-				
+
 				// Add HyperBEAM URL only for HyperBEAM mode
 				if (!isLegacyMode && !string.IsNullOrEmpty(hyperBeamUrl))
 				{
 					arguments.Add("--hyperbeam-url");
 					arguments.Add(hyperBeamUrl);
 				}
-				
+
 				// Add unique ID for request/response correlation
 				if (!string.IsNullOrEmpty(id))
 				{
@@ -690,7 +704,7 @@ namespace Permaverse.AO
 					// Encode data as base64 to avoid command line escaping issues with JSON
 					byte[] dataBytes = System.Text.Encoding.UTF8.GetBytes(data);
 					string dataBase64 = Convert.ToBase64String(dataBytes);
-					
+
 					arguments.Add("--data-base64");
 					arguments.Add(dataBase64);
 					Debug.Log($"[AOConnectManager] Encoding data as base64 ({dataBytes.Length} bytes)");
@@ -717,12 +731,12 @@ namespace Permaverse.AO
 									tagsObjectJson[tagName] = tagValue;
 								}
 							}
-							
+
 							// Encode tags object as base64
 							string tagsObjectJsonString = tagsObjectJson.ToString();
 							byte[] tagsBytes = System.Text.Encoding.UTF8.GetBytes(tagsObjectJsonString);
 							string tagsBase64 = Convert.ToBase64String(tagsBytes);
-							
+
 							arguments.Add("--tags-base64");
 							arguments.Add(tagsBase64);
 							Debug.Log($"[AOConnectManager] Encoding tags as base64: {tagsObjectJsonString}");
@@ -742,10 +756,10 @@ namespace Permaverse.AO
 				// Parse response - Node.js script should return the same format as JavaScript sendMessageHyperBeam
 				// Expected format: { "Messages": [], "Spawns": [], "Output": "", "Error": null, "uniqueID": "..." }
 				var response = JSON.Parse(output);
-				
+
 				// Call the callback with the successful response
 				InvokeCallback(objectCallback, methodCallback, id, null, output);
-				
+
 				// Log any errors from the response
 				if (response.HasKey("Error") && !response["Error"].IsNull && !string.IsNullOrEmpty(response["Error"]))
 				{

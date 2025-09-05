@@ -8,114 +8,193 @@ namespace Permaverse.AO
 {
 	public class EnqueueMessageHandler : MessageHandler
 	{
-		[Header("EnqueueMessageHandler")]
+		[Header("Enqueue Settings")]
+		[Tooltip("Interval between message requests")]
 		public float enqueueRequestInterval = 5f;
-		public bool limitToOneRequest = true;
+		[Tooltip("Maximum number of messages to keep in memory for processing")]
+		public int maxQueueSize = 1;
 
-		protected Queue<UniTask> asyncRequestQueue = new Queue<UniTask>();
-		protected bool isProcessing = false;
+		public bool callbackIfNotProcessed = false;
+
+		private Queue<MessageRequest> requestQueue = new Queue<MessageRequest>();
+		private bool isProcessing = false;
 		protected float lastRequestTime = 0f;
+
+		/// <summary>
+		/// Structure to hold message request information
+		/// </summary>
+		protected struct MessageRequest
+		{
+			public string pid;
+			public List<Tag> tags;
+			public Action<bool, NodeCU> callback;
+			public string data;
+			public NetworkMethod method;
+			public bool useMainWallet;
+			public WalletType walletType;
+			public CancellationToken cancellationToken;
+		}
+
+		protected MessageRequest? currentRequest;
 
 		// UniTask versions for zero-allocation performance
 		public virtual void EnqueueRequest(string pid, List<Tag> tags, Action<bool, NodeCU> callback, string data = null, NetworkMethod method = NetworkMethod.Dryrun, bool useMainWallet = false, WalletType walletType = WalletType.Default)
 		{
+			// Use shared cancellation token if none provided
+			var cancellationToken = GetSharedCancellationToken();
+			
 			float timeSinceLastRequest = Time.time - lastRequestTime;
 
-			if (timeSinceLastRequest < enqueueRequestInterval && limitToOneRequest && asyncRequestQueue.Count > 0)
+			if (timeSinceLastRequest < enqueueRequestInterval && maxQueueSize <= requestQueue.Count)
 			{
+				if(callbackIfNotProcessed) 
+				{
+					var errorResponse = new NodeCU("{\"Error\":\"Request rejected due to interval limit\"}");
+					callback?.Invoke(false, errorResponse);
+				}
 				return;
 			}
 
-			// Use the new async method with proper await instead of callback
-			var task = EnqueueRequestInternalAsync(pid, tags, callback, data, method, useMainWallet, walletType, GetSharedCancellationToken());
-			asyncRequestQueue.Enqueue(task);
-			
+			var queuedRequest = new MessageRequest
+			{
+				pid = pid,
+				tags = tags,
+				callback = callback,
+				data = data,
+				method = method,
+				useMainWallet = useMainWallet,
+				walletType = walletType,
+				cancellationToken = cancellationToken
+			};
+
+			requestQueue.Enqueue(queuedRequest);
+
+			// Start processing if not already running
 			if (!isProcessing)
 			{
-				ProcessQueueAsync(GetSharedCancellationToken()).Forget();
+				ProcessQueueAsync().Forget();
 			}
 		}
 
-		private async UniTask EnqueueRequestInternalAsync(string pid, List<Tag> tags, Action<bool, NodeCU> callback, string data, NetworkMethod method, bool useMainWallet, WalletType walletType, CancellationToken cancellationToken)
-		{
-			// Use the new centralized retry logic with await
-			var (success, result) = await SendRequestAsync(pid, tags, null, data, method, useMainWallet, walletType, cancellationToken);
-			
-			// Call the callback with the final result
-			callback?.Invoke(success, result);
-		}
-
-		public virtual void EnqueueHyperBeamRequest(string pid, string methodName, List<Tag> tags, Action<bool, string> callback, bool serialize = true, string moduleId = null)
-		{
-			float timeSinceLastRequest = Time.time - lastRequestTime;
-
-			if (timeSinceLastRequest < enqueueRequestInterval && limitToOneRequest && asyncRequestQueue.Count > 0)
-			{
-				return;
-			}
-
-			// Use await pattern for cleaner async code
-			var task = EnqueueHyperBeamRequestInternalAsync(pid, methodName, tags, callback, serialize, moduleId, GetSharedCancellationToken());
-			asyncRequestQueue.Enqueue(task);
-			
-			if (!isProcessing)
-			{
-				ProcessQueueAsync(GetSharedCancellationToken()).Forget();
-			}
-		}
-
-		private async UniTask EnqueueHyperBeamRequestInternalAsync(string pid, string methodName, List<Tag> tags, Action<bool, string> callback, bool serialize, string moduleId, CancellationToken cancellationToken)
-		{
-			// Use the existing HyperBeam path logic with await
-			await SendHyperBeamRequestAsync(pid, methodName, tags, callback, serialize, moduleId, cancellationToken);
-		}
-
+		/// <summary>
+		/// Force stop all running operations and reset state
+		/// Override to also clear the request queue
+		/// </summary>
 		public override void ForceStopAndReset()
 		{
 			// Call base class implementation first (handles shared cancellation token)
 			base.ForceStopAndReset();
 
-			// Clear the request queues
-			asyncRequestQueue.Clear();
+			// Clear the request queue and notify callbacks
+			while (requestQueue.Count > 0)
+			{
+				var request = requestQueue.Dequeue();
+				if(callbackIfNotProcessed) 
+				{
+					var errorResponse = new NodeCU("{\"Error\":\"Operation cancelled\"}");
+					request.callback?.Invoke(false, errorResponse);
+				}
+			}
+
+			requestQueue.Clear();
 
 			// Reset processing state
 			isProcessing = false;
 			lastRequestTime = 0f;
+			
+			if (showLogs)
+				Debug.Log("[EnqueueMessageHandler] Queue cleared and state reset");
 		}
 
-		// UniTask async helper methods
-		protected virtual async UniTask SendHyperBeamRequestAsync(string pid, string methodName, List<Tag> tags, Action<bool, string> callback, bool serialize = true, string moduleId = null, CancellationToken cancellationToken = default)
-		{
-			string path = BuildHyperBeamDynamicPath(pid, methodName, tags, now: true, moduleId: moduleId);
-			await SendHyperBeamPathAsync(path, callback, serialize, cancellationToken);
-		}
-
+		/// <summary>
+		/// Process the request queue with proper timing intervals
+		/// </summary>
 		protected virtual async UniTask ProcessQueueAsync(CancellationToken cancellationToken = default)
 		{
 			isProcessing = true;
 
 			try
 			{
-				while (asyncRequestQueue.Count > 0 && !cancellationToken.IsCancellationRequested)
+				while (requestQueue.Count > 0 && !cancellationToken.IsCancellationRequested)
 				{
+					// Get the next request from queue
+					var request = requestQueue.Dequeue();
+					currentRequest = request;
+					
 					lastRequestTime = Time.time;
-					var task = asyncRequestQueue.Dequeue();
-					await task;
+					
+					if (showLogs) Debug.Log($"[{gameObject.name}] Processing request for PID: {request.pid}");
 
-					while ((Time.time - lastRequestTime) < enqueueRequestInterval && !cancellationToken.IsCancellationRequested)
+					// Send the request using the centralized retry logic
+					var (success, result) = await SendRequestAsync(
+						request.pid, 
+						request.tags, 
+						null, 
+						request.data, 
+						request.method, 
+						request.useMainWallet, 
+						request.walletType, 
+						request.cancellationToken
+					);
+
+					// Call the callback with the final result
+					request.callback?.Invoke(success, result);
+
+					// Wait for the remaining interval time before processing next request
+					float remainingTime = enqueueRequestInterval - (Time.time - lastRequestTime);
+					if (remainingTime > 0 && !cancellationToken.IsCancellationRequested)
 					{
-						await UniTask.Yield(cancellationToken: cancellationToken);
+						await UniTask.Delay(TimeSpan.FromSeconds(remainingTime), cancellationToken: cancellationToken);
 					}
 				}
 			}
 			catch (OperationCanceledException)
 			{
 				// Expected when cancellation is requested
+				if (showLogs) Debug.Log($"[{gameObject.name}] Queue processing cancelled");
+				
 			}
 			finally
 			{
 				isProcessing = false;
+				currentRequest = null;
+
+				if (showLogs) Debug.Log($"[{gameObject.name}] Queue processing finished");
 			}
+		}
+
+		/// <summary>
+		/// Clear the request queue and notify all pending callbacks
+		/// </summary>
+		public virtual void ClearQueue()
+		{
+			while (requestQueue.Count > 0)
+			{
+				var request = requestQueue.Dequeue();
+				if(callbackIfNotProcessed) 
+				{
+					var errorResponse = new NodeCU("{\"Error\":\"Queue cleared\"}");
+					request.callback?.Invoke(false, errorResponse);
+				}
+			}
+
+			if (showLogs) Debug.Log($"[{gameObject.name}] Request queue cleared");
+		}
+
+		/// <summary>
+		/// Get current queue size
+		/// </summary>
+		public int GetQueueSize()
+		{
+			return requestQueue.Count;
+		}
+
+		/// <summary>
+		/// Check if queue is currently being processed
+		/// </summary>
+		public bool IsProcessing()
+		{
+			return isProcessing;
 		}
 	}
 }

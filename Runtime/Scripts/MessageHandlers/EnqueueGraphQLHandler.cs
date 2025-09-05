@@ -1,16 +1,29 @@
 using UnityEngine;
 using System;
 using System.Collections.Generic;
+using System.Threading;
 using Cysharp.Threading.Tasks;
 
 namespace Permaverse.AO
 {
+    /// <summary>
+    /// Queue-based GraphQL handler for rate-limited processing
+    /// Extends GraphQLHandler with request queuing and interval management
+    /// </summary>
     public class EnqueueGraphQLHandler : GraphQLHandler
     {
         [Header("Queue Settings")]
+        [Tooltip("Maximum number of concurrent requests")]
         public int maxConcurrentRequests = 1;
-        public float requestInterval = 1.0f; // Seconds between requests
-        public int maxQueueSize = 100;
+        
+        [Tooltip("Interval between processing queue items")]
+        public float enqueueRequestInterval = 1.0f; // Seconds between requests
+        
+        [Tooltip("Maximum queue size before dropping requests")]
+        public int maxQueueSize = 1;
+        
+        [Tooltip("Whether to call callback for requests rejected due to interval limits")]
+        public bool callbackIfNotProcessed = false;
 
         private Queue<GraphQLQueueItem> requestQueue = new Queue<GraphQLQueueItem>();
         private Queue<ProcessTransactionsQueueItem> processRequestQueue = new Queue<ProcessTransactionsQueueItem>();
@@ -23,7 +36,7 @@ namespace Permaverse.AO
             public Action<bool, string> Callback;
             public List<string> Endpoints;
             public DateTime QueuedTime;
-            public System.Threading.CancellationToken CancellationToken;
+            public CancellationToken CancellationToken;
         }
 
         protected struct ProcessTransactionsQueueItem
@@ -36,7 +49,7 @@ namespace Permaverse.AO
             public List<string> Endpoints;
             public DateTime QueuedTime;
             public long? FromTimestamp;
-            public System.Threading.CancellationToken CancellationToken;
+            public CancellationToken CancellationToken;
         }
 
         /// <summary>
@@ -46,15 +59,21 @@ namespace Permaverse.AO
             string query, 
             Action<bool, string> callback = null, 
             List<string> endpoints = null,
-            System.Threading.CancellationToken cancellationToken = default)
+            CancellationToken cancellationToken = default)
         {
+            // Use shared cancellation token if none provided
+            if (cancellationToken == default)
+            {
+                cancellationToken = GetSharedCancellationToken();
+            }
+
             if (requestQueue.Count >= maxQueueSize)
             {
                 if (showLogs) 
                 {
                     Debug.LogWarning($"[{gameObject.name}] GraphQL queue is full, dropping request");
                 }
-                callback?.Invoke(false, "{\"Error\":\"Queue is full\"}");
+                if (callbackIfNotProcessed) callback?.Invoke(false, "{\"Error\":\"Queue is full\"}");
                 return;
             }
 
@@ -91,16 +110,22 @@ namespace Permaverse.AO
             int first = 1,
             bool getData = true,
             List<string> endpoints = null,
-            System.Threading.CancellationToken cancellationToken = default,
+            CancellationToken cancellationToken = default,
             long? fromTimestamp = null)
         {
+            // Use shared cancellation token if none provided
+            if (cancellationToken == default)
+            {
+                cancellationToken = GetSharedCancellationToken();
+            }
+
             if (processRequestQueue.Count >= maxQueueSize)
             {
                 if (showLogs) 
                 {
                     Debug.LogWarning($"[{gameObject.name}] Process transactions queue is full, dropping request");
                 }
-                callback?.Invoke(false, null);
+                if (callbackIfNotProcessed) callback?.Invoke(false, null);
                 return;
             }
 
@@ -146,7 +171,7 @@ namespace Permaverse.AO
         /// <summary>
         /// Process the queue continuously
         /// </summary>
-        protected virtual async UniTask ProcessQueueAsync(System.Threading.CancellationToken cancellationToken = default)
+        protected virtual async UniTask ProcessQueueAsync(CancellationToken cancellationToken = default)
         {
             try
             {
@@ -155,7 +180,7 @@ namespace Permaverse.AO
                     // Check if we can process more requests
                     if (activeRequests >= maxConcurrentRequests)
                     {
-                        await UniTask.Delay(TimeSpan.FromSeconds(requestInterval), cancellationToken: cancellationToken);
+                        await UniTask.Delay(TimeSpan.FromSeconds(enqueueRequestInterval), cancellationToken: cancellationToken);
                         continue;
                     }
 
@@ -177,7 +202,7 @@ namespace Permaverse.AO
                     // Wait between processing items
                     if (requestQueue.Count > 0 || processRequestQueue.Count > 0)
                     {
-                        await UniTask.Delay(TimeSpan.FromSeconds(requestInterval), cancellationToken: cancellationToken);
+                        await UniTask.Delay(TimeSpan.FromSeconds(enqueueRequestInterval), cancellationToken: cancellationToken);
                     }
                 }
             }
@@ -203,7 +228,7 @@ namespace Permaverse.AO
         /// </summary>
         protected virtual async UniTask ProcessGraphQLRequestAsync(
             GraphQLQueueItem queueItem,
-            System.Threading.CancellationToken cancellationToken = default)
+            CancellationToken cancellationToken = default)
         {
             try
             {
@@ -223,7 +248,7 @@ namespace Permaverse.AO
                 }
                 queueItem.Callback?.Invoke(false, "{\"Error\":\"Request cancelled\"}");
             }
-            catch (System.Exception ex)
+            catch (Exception ex)
             {
                 if (showLogs)
                 {
@@ -242,7 +267,7 @@ namespace Permaverse.AO
         /// </summary>
         protected virtual async UniTask ProcessProcessTransactionsRequestAsync(
             ProcessTransactionsQueueItem queueItem,
-            System.Threading.CancellationToken cancellationToken = default)
+            CancellationToken cancellationToken = default)
         {
             try
             {
@@ -293,12 +318,39 @@ namespace Permaverse.AO
         }
 
         /// <summary>
+        /// Get current queue size (total across both queues)
+        /// </summary>
+        public int GetQueueSize()
+        {
+            return requestQueue.Count + processRequestQueue.Count;
+        }
+
+        /// <summary>
+        /// Check if queue is currently being processed
+        /// </summary>
+        public bool IsProcessing()
+        {
+            return isProcessingQueue;
+        }
+
+        /// <summary>
         /// Clear all queues
         /// </summary>
         public virtual void ClearQueue()
         {
-            requestQueue.Clear();
-            processRequestQueue.Clear();
+            // Clear GraphQL queue with callbacks
+            while (requestQueue.Count > 0)
+            {
+                var request = requestQueue.Dequeue();
+                if (callbackIfNotProcessed) request.Callback?.Invoke(false, "{\"Error\":\"Queue cleared\"}");
+            }
+
+            // Clear process transactions queue with callbacks  
+            while (processRequestQueue.Count > 0)
+            {
+                var request = processRequestQueue.Dequeue();
+                if (callbackIfNotProcessed) request.Callback?.Invoke(false, null);
+            }
             
             if (showLogs)
             {
