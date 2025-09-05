@@ -237,7 +237,10 @@ namespace Permaverse.AO
                     Debug.Log($"[{gameObject.name}] Processing GraphQL query from queue");
                 }
 
-                await SendGraphQLQueryAsync(queueItem.Query, queueItem.Callback, queueItem.Endpoints, queueItem.CancellationToken);
+                (bool success, string result) = await SendGraphQLQueryAsync(queueItem.Query, null, queueItem.Endpoints, queueItem.CancellationToken);
+                
+                // Call the callback with the result
+                queueItem.Callback?.Invoke(success, result);
             }
             catch (OperationCanceledException)
             {
@@ -276,15 +279,18 @@ namespace Permaverse.AO
                     Debug.Log($"[{gameObject.name}] Processing process transactions query from queue");
                 }
 
-                await GetProcessTransactionsAsync(
+                (bool success, var result) = await GetProcessTransactionsAsync(
                     queueItem.ProcessId,
                     queueItem.AdditionalTags,
-                    queueItem.Callback,
+                    null,
                     queueItem.First,
                     queueItem.GetData,
                     queueItem.Endpoints,
                     queueItem.CancellationToken,
                     queueItem.FromTimestamp);
+                
+                // Call the callback with the result
+                queueItem.Callback?.Invoke(success, result);
             }
             catch (OperationCanceledException)
             {

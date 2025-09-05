@@ -62,8 +62,8 @@ namespace Permaverse.AO
         /// </summary>
         /// <param name="transactionId">The transaction ID to fetch data for</param>
         /// <param name="callback">Optional callback with success status and data string</param>
-        /// <returns>Transaction data string or null if failed</returns>
-        public virtual async UniTask<string> GetTransactionDataAsync(string transactionId, Action<bool, string> callback = null)
+        /// <returns>Tuple with success status and transaction data string</returns>
+        public virtual async UniTask<(bool success, string result)> GetTransactionDataAsync(string transactionId, Action<bool, string> callback = null)
         {
             try
             {
@@ -89,7 +89,7 @@ namespace Permaverse.AO
                     }
 
                     callback?.Invoke(true, data);
-                    return data;
+                    return (true, data);
                 }
                 else
                 {
@@ -98,7 +98,7 @@ namespace Permaverse.AO
                         Debug.LogWarning($"[{gameObject.name}] Failed to fetch transaction data for {transactionId}: {request.error}");
                     }
                     callback?.Invoke(false, null);
-                    return null;
+                    return (false, null);
                 }
             }
             catch (OperationCanceledException)
@@ -109,7 +109,7 @@ namespace Permaverse.AO
                     Debug.Log($"[{gameObject.name}] Transaction data fetch cancelled");
                 }
                 callback?.Invoke(false, null);
-                return null;
+                return (false, null);
             }
             catch (Exception ex)
             {
@@ -118,7 +118,7 @@ namespace Permaverse.AO
                     Debug.LogError($"[{gameObject.name}] Exception fetching transaction data: {ex.Message}");
                 }
                 callback?.Invoke(false, null);
-                return null;
+                return (false, null);
             }
         }
 
@@ -129,8 +129,8 @@ namespace Permaverse.AO
         /// <param name="callback">Optional callback with success status and JSON response</param>
         /// <param name="endpoints">Optional custom endpoints to use (uses default if null)</param>
         /// <param name="cancellationToken">Optional cancellation token to cancel the request</param>
-        /// <returns>JSON response string or null if failed</returns>
-        public virtual async UniTask<string> SendGraphQLQueryAsync(string query, Action<bool, string> callback = null, List<string> endpoints = null, CancellationToken cancellationToken = default)
+        /// <returns>Tuple with success status and JSON response string</returns>
+        public virtual async UniTask<(bool success, string result)> SendGraphQLQueryAsync(string query, Action<bool, string> callback = null, List<string> endpoints = null, CancellationToken cancellationToken = default)
         {
             // Use shared cancellation token if none provided
             if (cancellationToken == default)
@@ -144,7 +144,7 @@ namespace Permaverse.AO
             {
                 if (showLogs) Debug.LogError($"[{gameObject.name}] No GraphQL endpoints provided");
                 callback?.Invoke(false, null);
-                return null;
+                return (false, null);
             }
 
             for (int attempt = 0; attempt <= maxRetries; attempt++)
@@ -158,21 +158,21 @@ namespace Permaverse.AO
                     if (success)
                     {
                         callback?.Invoke(true, result);
-                        return result;
+                        return (true, result);
                     }
                     
                     // If we don't retry on failure, call callback and return immediately
                     if (!resendIfResultFalse)
                     {
                         callback?.Invoke(false, result);
-                        return result;
+                        return (false, result);
                     }
                     
                     // If this was the last attempt, return failure
                     if (attempt == maxRetries)
                     {
                         callback?.Invoke(false, result);
-                        return result;
+                        return (false, result);
                     }
                     
                     // Calculate delay for next retry - use last delay if we run out of delays
@@ -186,7 +186,7 @@ namespace Permaverse.AO
                     // Request was cancelled during retry delay
                     if (showLogs) Debug.Log($"[{gameObject.name}] GraphQL request cancelled");
                     callback?.Invoke(false, null);
-                    return null;
+                    return (false, null);
                 }
                 catch (Exception ex)
                 {
@@ -194,12 +194,12 @@ namespace Permaverse.AO
                     if (attempt == maxRetries)
                     {
                         callback?.Invoke(false, null);
-                        return null;
+                        return (false, null);
                     }
                 }
             }
 
-            return null;
+            return (false, null);
         }
 
         /// <summary>
@@ -288,8 +288,8 @@ namespace Permaverse.AO
         /// <param name="endpoints">Optional custom endpoints to use</param>
         /// <param name="cancellationToken">Optional cancellation token to cancel the request</param>
         /// <param name="fromTimestamp">Optional timestamp filter - only search transactions ingested after this time (Unix timestamp)</param>
-        /// <returns>Dictionary where key is txID and value is Message, or null if failed</returns>
-        public virtual async UniTask<Dictionary<string, Message>> GetProcessTransactionsAsync(
+        /// <returns>Tuple with success status and Dictionary where key is txID and value is Message</returns>
+        public virtual async UniTask<(bool success, Dictionary<string, Message> result)> GetProcessTransactionsAsync(
             string processId,
             List<Tag> additionalTags = null,
             Action<bool, Dictionary<string, Message>> callback = null,
@@ -303,23 +303,23 @@ namespace Permaverse.AO
             {
                 // Build and send GraphQL query
                 string query = BuildProcessTransactionsQuery(processId, additionalTags, first, fromTimestamp);
-                string graphqlResponse = await SendGraphQLQueryAsync(query, null, endpoints, cancellationToken);
+                (bool graphqlSuccess, string graphqlResponse) = await SendGraphQLQueryAsync(query, null, endpoints, cancellationToken);
 
-                if (string.IsNullOrEmpty(graphqlResponse))
+                if (!graphqlSuccess || string.IsNullOrEmpty(graphqlResponse))
                 {
                     callback?.Invoke(false, null);
-                    return null;
+                    return (false, null);
                 }
 
                 // Parse GraphQL response
-                var jsonResponse = SimpleJSON.JSON.Parse(graphqlResponse);
+                var jsonResponse = JSON.Parse(graphqlResponse);
                 var edges = jsonResponse["data"]["transactions"]["edges"];
                 
                 if (edges == null || edges.Count == 0)
                 {
                     var emptyResult = new Dictionary<string, Message>();
                     callback?.Invoke(true, emptyResult);
-                    return emptyResult;
+                    return (true, emptyResult);
                 }
 
                 var result = new Dictionary<string, Message>();
@@ -370,7 +370,7 @@ namespace Permaverse.AO
                 if (!getData)
                 {
                     callback?.Invoke(true, result);
-                    return result;
+                    return (true, result);
                 }
 
                 // Fetch transaction data for all transactions in parallel
@@ -381,8 +381,8 @@ namespace Permaverse.AO
                 {
                     var task = UniTask.Create(async () =>
                     {
-                        string data = await GetTransactionDataAsync(txId);
-                        if (!string.IsNullOrEmpty(data))
+                        (bool success, string data) = await GetTransactionDataAsync(txId);
+                        if (success && !string.IsNullOrEmpty(data))
                         {
                             dataResults[txId] = data;
                         }
@@ -402,7 +402,7 @@ namespace Permaverse.AO
                 }
 
                 callback?.Invoke(true, result);
-                return result;
+                return (true, result);
             }
             catch (OperationCanceledException)
             {
@@ -412,13 +412,13 @@ namespace Permaverse.AO
                     Debug.Log($"[{gameObject.name}] GetProcessTransactionsAsync cancelled");
                 }
                 callback?.Invoke(false, null);
-                return null;
+                return (false, null);
             }
             catch (Exception ex)
             {
                 Debug.LogError($"Error in GetProcessTransactionsAsync: {ex.Message}");
                 callback?.Invoke(false, null);
-                return null;
+                return (false, null);
             }
         }
 
