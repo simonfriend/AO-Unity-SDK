@@ -65,6 +65,65 @@ namespace Permaverse.AO
         /// <returns>Tuple with success status and transaction data string</returns>
         public virtual async UniTask<(bool success, string result)> GetTransactionDataAsync(string transactionId, Action<bool, string> callback = null)
         {
+            for (int attempt = 0; attempt <= maxRetries; attempt++)
+            {
+                try
+                {
+                    (bool success, string result) = await GetTransactionDataOnceAsync(transactionId);
+                    
+                    // If successful, call callback and return immediately
+                    if (success)
+                    {
+                        callback?.Invoke(true, result);
+                        return (true, result);
+                    }
+                    
+                    // If we don't retry on failure, call callback and return immediately
+                    if (!resendIfResultFalse)
+                    {
+                        callback?.Invoke(false, result);
+                        return (false, result);
+                    }
+                    
+                    // If this was the last attempt, return failure
+                    if (attempt == maxRetries)
+                    {
+                        callback?.Invoke(false, result);
+                        return (false, result);
+                    }
+                    
+                    // Calculate delay for next retry - use last delay if we run out of delays
+                    float delay = attempt < resendDelays.Count ? resendDelays[attempt] : (resendDelays.Count > 0 ? resendDelays[resendDelays.Count - 1] : defaultDelay);
+                    if (showLogs) Debug.Log($"[{gameObject.name}] Retrying transaction data fetch for {transactionId} in {delay} seconds (attempt {attempt + 2})");
+                    
+                    await UniTask.Delay(TimeSpan.FromSeconds(delay), cancellationToken: GetSharedCancellationToken());
+                }
+                catch (OperationCanceledException)
+                {
+                    // Request was cancelled during retry delay
+                    if (showLogs) Debug.Log($"[{gameObject.name}] Transaction data fetch cancelled");
+                    callback?.Invoke(false, null);
+                    return (false, null);
+                }
+                catch (Exception ex)
+                {
+                    if (showLogs) Debug.LogError($"[{gameObject.name}] Transaction data fetch failed: {ex.Message}");
+                    if (attempt == maxRetries)
+                    {
+                        callback?.Invoke(false, null);
+                        return (false, null);
+                    }
+                }
+            }
+
+            return (false, null);
+        }
+
+        /// <summary>
+        /// Get transaction data by ID from Arweave (single attempt, no retry logic)
+        /// </summary>
+        private async UniTask<(bool success, string result)> GetTransactionDataOnceAsync(string transactionId)
+        {
             try
             {
                 string arweaveUrl = $"https://arweave.net/{transactionId}";
@@ -88,7 +147,6 @@ namespace Permaverse.AO
                         Debug.Log($"[{gameObject.name}] Transaction data fetched successfully: {data.Length} characters");
                     }
 
-                    callback?.Invoke(true, data);
                     return (true, data);
                 }
                 else
@@ -97,7 +155,6 @@ namespace Permaverse.AO
                     {
                         Debug.LogWarning($"[{gameObject.name}] Failed to fetch transaction data for {transactionId}: {request.error}");
                     }
-                    callback?.Invoke(false, null);
                     return (false, null);
                 }
             }
@@ -108,8 +165,7 @@ namespace Permaverse.AO
                 {
                     Debug.Log($"[{gameObject.name}] Transaction data fetch cancelled");
                 }
-                callback?.Invoke(false, null);
-                return (false, null);
+                throw; // Re-throw to be handled by outer catch
             }
             catch (Exception ex)
             {
@@ -117,7 +173,6 @@ namespace Permaverse.AO
                 {
                     Debug.LogError($"[{gameObject.name}] Exception fetching transaction data: {ex.Message}");
                 }
-                callback?.Invoke(false, null);
                 return (false, null);
             }
         }
