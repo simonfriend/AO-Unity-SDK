@@ -1,154 +1,391 @@
 # Getting Started with Permaverse AO Unity SDK
 
-This guide will walk you through setting up and using the Permaverse AO Unity SDK in your project.
+This comprehensive guide covers everything from initial setup to advanced features of the Permaverse AO Unity SDK.
 
 ---
 
-## Installation
-
-Follow the [installation instructions in the README](README.md#installation) to add the package to your Unity project.
+## Table of Contents
+1. [Prerequisites](#prerequisites)
+2. [Installation](#installation)
+3. [Project Setup](#project-setup)
+4. [Wallet Management](#wallet-management)
+5. [Networking & Message Handlers](#networking--message-handlers)
+6. [HyperBeam Integration](#hyperbeam-integration)
+7. [GraphQL Utilities](#graphql-utilities)
+8. [Unity Editor Testing](#unity-editor-testing)
+9. [WebGL Deployment](#webgl-deployment)
+10. [Advanced Features](#advanced-features)
+11. [Troubleshooting](#troubleshooting)
 
 ---
 
-## Setting Up AOConnectManager
+## Wallet Management
 
-1. Drag the **AOConnectManager** prefab into your Unity scene.
-2. Configure the settings in the Inspector, such as your AO credentials.
-3. Call methods from `AOConnectManager.main` in your scripts to interact with the AO infrastructure.
+### Multi-Wallet Architecture
 
-Example:
+The SDK supports multiple wallet connection methods:
+
+#### Arweave Wallets (via Wander Connect)
+- **No browser extension required** - Works through Wander Connect integration
+- Supports both native and web-based Arweave wallets
+- Seamless connection flow without popups
+
+#### EVM Wallets (with Session Keys)
+- **Embedded session keys** - Sign messages without MetaMask popups
+- 7-day session expiration with auto-renewal
+- Stored securely in browser localStorage
+- Fallback to main wallet signing when needed
+
 ```csharp
-using Permaverse.AO;
-using UnityEngine;
-
-public class MyAOTest : MonoBehaviour
+public class WalletManager : MonoBehaviour
 {
+    private AOConnectManager manager => AOConnectManager.main;
+    
+    public void ConnectWallets()
+    {
+        // Connect Arweave wallet via Wander Connect (no extension needed)
+        manager.ConnectWallet(WalletType.Arweave);
+        
+        // Connect EVM wallet with session keys (no popups for messages)
+        manager.ConnectWallet(WalletType.EVM);
+    }
+    
+    public void CheckSessionKey()
+    {
+        var evmInfo = manager.GetSecondaryWalletInfo(WalletType.EVM);
+        if (evmInfo?.sessionKeyInfo != null)
+        {
+            Debug.Log($"Session key active: {evmInfo.sessionKeyInfo.address}");
+            Debug.Log($"Expires: {evmInfo.sessionKeyInfo.expiryDate}");
+            Debug.Log($"Main wallet: {evmInfo.sessionKeyInfo.mainWallet}");
+        }
+    }
+}
+```
+
+---
+
+## Networking & Message Handlers
+
+### MessageHandler - Core Networking
+
+Supports three network modes for different use cases:
+
+```csharp
+public class NetworkingExample : MonoBehaviour
+{
+    public MessageHandler handler;
+    
+    async void DemonstrateNetworkModes()
+    {
+        var tags = new List<Tag> 
+        { 
+            new Tag("Action", "GetData") 
+        };
+        
+        // 1. Legacy AO Mode - Traditional AO messages with results
+        var (success1, result1) = await handler.SendRequestAsync(
+            pid: "process_id",
+            tags: tags,
+            method: MessageHandler.NetworkMethod.Message
+        );
+        
+        // 2. HyperBEAM Mode - Fast processing via HyperBEAM
+        var (success2, result2) = await handler.SendRequestAsync(
+            pid: "process_id",
+            tags: tags,
+            method: MessageHandler.NetworkMethod.HyperBeamMessage
+        );
+        
+        // 3. Dryrun Mode - Test without on-chain commitment
+        var (success3, result3) = await handler.SendRequestAsync(
+            pid: "process_id",
+            tags: tags,
+            method: MessageHandler.NetworkMethod.Dryrun
+        );
+    }
+}
+```
+
+---
+
+## GraphQL Utilities
+
+The SDK includes powerful GraphQL utilities for querying the Arweave network:
+
+### GraphQLHandler Features
+
+```csharp
+public class GraphQLExample : MonoBehaviour
+{
+    public GraphQLHandler graphqlHandler;
+    
+    async void DemonstrateGraphQL()
+    {
+        // 1. Custom GraphQL query
+        string customQuery = @"{
+            transactions(first: 10, tags: [{name: ""Type"", values: [""Process""]}]) {
+                edges {
+                    node {
+                        id
+                        recipient
+                        tags { name value }
+                    }
+                }
+            }
+        }";
+        
+        var (success1, result1) = await graphqlHandler.SendGraphQLQueryAsync(customQuery);
+        
+        // 2. Get process transactions with helper method
+        var tags = new List<Tag> { new Tag("Action", "Transfer") };
+        var (success2, messages) = await graphqlHandler.GetProcessTransactionsAsync(
+            processId: "your_process_id",
+            additionalTags: tags,
+            first: 20,
+            getData: true,  // Fetch transaction data
+            fromTimestamp: DateTimeOffset.UtcNow.AddDays(-7).ToUnixTimeSeconds()
+        );
+        
+        // 3. Multiple endpoint fallback support
+        graphqlHandler.graphqlEndpoints = new List<string>
+        {
+            "https://arweave.net/graphql",
+            "https://arweave-search.goldsky.com/graphql",
+            "https://g8way.io/graphql"
+        };
+    }
+}
+```
+
+### EnqueueGraphQLHandler
+
+For rate-limited GraphQL operations:
+
+```csharp
+public class EnqueuedGraphQLExample : MonoBehaviour
+{
+    public EnqueueGraphQLHandler enqueuedHandler;
+    
     void Start()
     {
-        AOConnectManager.main.OnCurrentAddressChange += OnCurrentAddressChanged;
-        Debug.Log("Connected to AO!");
-    }
-    
-    private void OnCurrentAddressChanged()
-    {
-        string currentAddress = AOConnectManager.main.CurrentAddress;
-        if (string.IsNullOrEmpty(currentAddress))
+        // Configure queue settings
+        enqueuedHandler.maxConcurrentRequests = 1;
+        enqueuedHandler.enqueueRequestInterval = 1.0f;
+        enqueuedHandler.maxQueueSize = 10;
+        
+        // Enqueue multiple queries - they'll be processed sequentially
+        for (int i = 0; i < 5; i++)
         {
-            Debug.LogError("Address is null or empty!!");
-            return;
+            string query = $"{{ transaction(id: \"tx_{i}\") {{ id tags {{ name value }} }} }}";
+            enqueuedHandler.EnqueueGraphQLQuery(query, OnQueryResult);
         }
-
-        Debug.Log($"Current address changed to: {currentAddress}");
+    }
+    
+    void OnQueryResult(bool success, string result)
+    {
+        if (success)
+        {
+            Debug.Log($"Query result: {result}");
+        }
     }
 }
 ```
 
 ---
 
-## Building for WebGL
+## HyperBeam Integration
 
-### **1. Copy the WebGL Template**
-Unity does not automatically detect WebGL templates from packages, so you need to manually copy it:
+### What is HyperBEAM?
 
-1. Copy the **WebGLTemplates** folder from:
-   ```
-   Packages/AO Permaverse SDK/WebGLTemplates/
-   ```
-   to:
-   ```
-   Assets/WebGLTemplates/
-   ```
+HyperBEAM is a high-performance message processing system for AO that offers:
+- **Local processing** - Run compute units locally for instant responses
+- **Caching** - Built-in response caching for repeated queries
+- **Path-based routing** - RESTful-style API paths for intuitive access
 
-2. Switch to WebGL in **File → Build Settings**.
-3. In **Project Settings → Player → WebGL → Resolution and Presentation**, select the **AOTemplate** WebGL Template.
+Learn more: [HyperBEAM Documentation](https://hyperbeam.arweave.net/build/introduction/what-is-hyperbeam.html)
 
-### **2. Set Up WebGL Player Settings**
+### Static Requests (Cached Data)
 
-Before building for WebGL, update these **Project Settings** to ensure compatibility:
-
-#### In **Project Settings → Player → WebGL → Other Settings**
-- **Color Space:** Change from **Linear** to **Gamma**.
-- **Texture Compression Format:** Set to **ASTC**.
-
-#### In **Project Settings → Player → WebGL → Publishing Settings**
-- **Compression Format:** **Disabled** (to avoid compatibility issues).
-- **Decompression Fallback:** **Enabled (true)** (for browser support).
-- **Target WebAssembly 2023:** **Enabled (true)**.
-
-### **3. Build the Unity WebGL Project**
-1. Open **File → Build Settings** in Unity.
-2. Click **Build** and choose an output folder (e.g., `WebGLBuild/`).
-
-### **4. Run the Build Script**
-After Unity has finished building:
-
-1. Open the **WebGLBuild/build-tools/** folder.
-2. **Double-click** the correct file to run it:
-   - **On macOS/Linux**: `setup-mac-linux.command`
-   - **On Windows**: `setup-windows.bat`
-
-This will **install dependencies, build the JavaScript file, and start a local server**.
-
-### **5. Test the WebGL Build**
-Once complete, open:
-```
-http://localhost:8000
-```
-in your browser to test the WebGL build.
-
----
-
-## Using MessageHandler
-
-1. Use `MessageHandler` classes to send messages or perform dry runs.
-2. Example usage:
 ```csharp
-MessageHandler messageHandler;
-
-private void SendMessage(string target, string data, string actionTag)
+public class HyperBeamStatic : MonoBehaviour
 {
-    List<Tag> tags = new List<Tag>();
-    Tag actionTag = new Tag("Action", actionTag);
-    tags.Add(actionTag);
-
-    //To send a dryrun
-    messageHandler.SendRequest(target, tags, OnDryrunResult, data, MessageHandler.NetworkMethod.Dryrun);
+    public HyperBeamPathHandler hyperBeam;
     
-    //To send an on-chain message
-    messageHandler.SendRequest(target, tags, OnMessageResult, data, MessageHandler.NetworkMethod.Message);
-}
-
-public void OnDryrunResult(bool result, NodeCU nodeCU)
-{
-    Debug.Log($"Dryrun Result: {result}");
-    Debug.Log($"Node: {nodeCU.ToString()}");        
-}
-
-public void OnMessageResult(bool result, NodeCU nodeCU)
-{
-    Debug.Log($"Message Result: {result}");
-    Debug.Log($"Node: {nodeCU.ToString()}");        
+    async void GetCachedData()
+    {
+        // Access cached data via static path
+        var (success, result) = await hyperBeam.SendStaticRequestAsync(
+            pid: "process_id",
+            cachePath: "leaderboard/top100",
+            now: false,  // Use cached data
+            serialize: true
+        );
+        
+        if (success)
+        {
+            var data = JSON.Parse(result);
+            ProcessLeaderboard(data);
+        }
+    }
 }
 ```
 
----
+### Dynamic Requests (With Parameters)
 
-## Importing GLTF Assets with GLTFAssetManager
-
-1. Place `GLTFAssetManager` prefab in scene in order to load `.gltf` and `.glb` models from Arweave.
-2. Example usage:
 ```csharp
-
-public async void DownloadAsset(string assetID, GameObject parentObject)
+public class HyperBeamDynamic : MonoBehaviour
 {
-    GameObject asset = await GLTFAssetManager.main.GetAsset(assetID, parentObject);
+    public HyperBeamPathHandler hyperBeam;
+    
+    async void GetUserData(string userId)
+    {
+        // Fluent API for dynamic requests
+        var (success, result) = await hyperBeam
+            .ForProcess("process_id")
+            .Method("GetUserInfo")
+            .Parameter("UserId", userId)
+            .Parameter("IncludeStats", "true")
+            .Now(true)  // Use 'now' mode for speed
+            .Serialize(true)
+            .ExecuteAsync();
+            
+        if (success)
+        {
+            ProcessUserData(result);
+        }
+    }
 }
 ```
 
 ---
 
-## Further Help
+## Unity Editor Testing
 
-If you encounter issues or need further assistance, please visit the [Permaverse AO Unity SDK GitHub Issues page](https://github.com/simonfriend/AO-Unity-SDK/issues).
+### Dual Mode Support
+
+The Editor Tester supports both networking modes:
+
+1. **Legacy AO Mode** - Test traditional AO messages with results
+2. **HyperBEAM Mode** - Test fast HyperBEAM queries
+
+### Setup Node.js Environment
+
+1. **Navigate to EditorConnect**:
+   ```bash
+   cd Packages/com.permaverse.ao-sdk/EditorConnect~
+   ```
+
+2. **Run Setup Script**:
+   - **macOS/Linux**: `./setup.sh`
+   - **Windows**: `setup.bat`
+
+3. **Configure Wallet**:
+   - In AOConnectManager Inspector, set Editor Wallet Path
+   - Browse to your Arweave wallet JSON keyfile
+
+### Using AO Editor Tester
+
+1. **Open Window**: Tools → Permaverse → AO Editor Tester
+
+2. **Configure Settings**:
+   - **Process ID**: Your AO process
+   - **Message Mode**: 
+     - **HyperBEAM** - Fast message processing
+     - **Legacy** - Traditional AO messages with results
+   - **Output Format**: Unity or Raw
+
+3. **Send Messages**:
+   ```csharp
+   // Messages work in Editor with real wallet signing!
+   async void TestInEditor()
+   {
+       var tags = new List<Tag> { new Tag("Action", "Test") };
+       
+       // Test Legacy AO
+       var (success1, result1) = await messageHandler.SendRequestAsync(
+           processId, tags, method: MessageHandler.NetworkMethod.Message
+       );
+       
+       // Test HyperBEAM
+       var (success2, result2) = await messageHandler.SendRequestAsync(
+           processId, tags, method: MessageHandler.NetworkMethod.HyperBeamMessage
+       );
+       
+       // Test Dryrun
+       var (success3, result3) = await messageHandler.SendRequestAsync(
+           processId, tags, method: MessageHandler.NetworkMethod.Dryrun
+       );
+   }
+   ```
+
+### Command Line Testing
+
+```bash
+# HyperBEAM mode
+node aoconnect-editor.js \
+  --process-id YOUR_PROCESS \
+  --tag-Action=GetUserInfo \
+  --mode hyperbeam \
+  --log-level verbose
+
+# Legacy AO mode (messages with results)
+node aoconnect-editor.js \
+  --process-id YOUR_PROCESS \
+  --tag-Action=GetData \
+  --mode legacy \
+  --output unity
+```
 
 ---
+
+## Troubleshooting
+
+### Network Mode Issues
+
+**"Legacy AO message failed"**
+- Check internet connection
+- Ensure process ID is valid
+
+**"HyperBEAM connection failed"**
+- Verify HyperBEAM node is running: `curl http://localhost:8734`
+- Check firewall settings
+- Try remote HyperBEAM URL if local fails
+
+**"Dryrun returns unexpected result"**
+- Verify process ID and tags are correct
+- Check if process state matches expectations
+- Use Legacy AO mode to verify on-chain state
+
+### GraphQL Issues
+
+**"All GraphQL endpoints failed"**
+- Check internet connectivity
+- Verify query syntax is valid
+- Try with a simple test query first
+- Check if endpoints are responsive
+
+**"GraphQL query timeout"**
+- Reduce query complexity
+- Use pagination for large datasets
+- Increase timeout in handler settings
+
+---
+
+## Support
+
+- **GitHub Issues**: [Report bugs or request features](https://github.com/simonfriend/AO-Unity-SDK/issues)
+- **AO Discord**: [Join the community](https://discord.gg/ao)
+- **Documentation**: 
+  - [AO Cookbook](https://cookbook_ao.ar.io/)
+  - [HyperBEAM Docs](https://hyperbeam.arweave.net/build/introduction/what-is-hyperbeam.html)
+
+---
+
+## Next Steps
+
+1. ✅ Complete the setup
+2. 📝 Review example scenes in Samples
+3. 🔨 Build your first AO-powered feature
+4. 🚀 Deploy to WebGL
+5. 🎮 Ship your decentralized game!

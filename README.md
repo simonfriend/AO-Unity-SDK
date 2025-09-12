@@ -1,119 +1,142 @@
 # Permaverse AO Unity SDK
 
-**Permaverse AO Unity SDK** is a Unity package that provides tooling and scripts to integrate and interact with AO infrastructure from Unity.
-
-It includes:
-- Scripts for AO session and message management.
-- Support for WebGL (via a custom WebGL template and `.jslib` interop).
+**Permaverse AO Unity SDK** is a comprehensive Unity package for building decentralized applications on Arweave and AO infrastructure. Create fully on-chain Unity games and applications with multi-wallet support, high-performance messaging, and seamless WebGL deployment.
 
 ---
 
-## Features
+## ✨ Key Features
 
-- **AOConnectManager**: Handles connecting, messaging, and other AO functionalities.
-- **MessageHandler**: Sends AO messages, performs dry runs, and retrieves results directly in Unity.
-- **GLTFAssetManager**: Imports custom `.gltf` and `.glb` assets from Arweave into your Unity app.
-- **WebGL**: Includes a custom WebGL template and direct JavaScript interop.
+- **🔐 Multi-Wallet Support** 
+  - Arweave wallets via **Wander Connect** (no extension required)
+  - EVM wallets with **embedded session keys** (verified messages without popups)
+  - Connect multiple wallets simultaneously
+- **⚡ Dual Networking Modes**
+  - **HyperBEAM** - Fast message processing with local/remote nodes
+  - **Legacy AO** - Traditional messages, dryruns, and results
+- **📊 GraphQL Utilities** - Query Arweave network with built-in helpers
+- **📬 Advanced Messaging** - Queue-based, paginated, and periodic patterns
+- **🎮 Editor Testing** - Test without WebGL builds using Node.js
+- **♻️ Zero-Allocation Async** - UniTask-powered for optimal performance
+- **🛍️ Bazar Marketplace** - Integrated decentralized marketplace
+- **🎨 GLTF Assets** - Load 3D models directly from Arweave
 
 ---
 
-## Requirements
+## 📋 Requirements
 
-- Unity **6** or later (e.g., `6000.x.x`).
-- Basic knowledge of AO. You can learn more on [AO Cookbook](http://cookbook_ao.ar.io/).
+- Unity **6** or later (6000.x.x)
+- **UniTask** package (required)
+- Node.js **v16+** (for Editor testing)
+- Basic [AO](http://cookbook_ao.ar.io/) knowledge
 
 ---
 
-## Installation
+## 📦 Installation
 
-In Unity, go to **Window → Package Manager** → **+** → **“Add package from git URL…”** → Paste:
+### Step 1: Install UniTask (Required)
+```
+https://github.com/Cysharp/UniTask.git?path=src/UniTask/Assets/Plugins/UniTask
+```
+
+### Step 2: Install AO SDK
 ```
 https://github.com/simonfriend/AO-Unity-SDK.git
 ```
-and click **Add**.
 
-**Alternative**: 
-
-1. Open your Unity project’s `Packages/manifest.json` file in a text editor.
-2. Add this line to the `"dependencies"` section (you can target a specific release by appending #tag at the end of the url):
-
-   ```json
-   {
-     "dependencies": {
-       "com.permaverse.ao-sdk": "https://github.com/simonfriend/AO-Unity-SDK.git"
-     }
-   }
-   ```
-
-3. Save `manifest.json` and return to Unity. Unity will download the AO SDK and any required dependencies automatically.
-
----
-
-## Required Dependencies
-
-### UniTask (Performance Optimization)
-
-This SDK uses **UniTask** for high-performance async operations with zero allocations. You must install UniTask manually:
-
-**Option 1: Package Manager UI (Recommended)**
-1. Open **Window → Package Manager**
-2. Click **+** → **"Add package from git URL…"**
-3. Paste: `https://github.com/Cysharp/UniTask.git?path=src/UniTask/Assets/Plugins/UniTask`
-4. Click **Add**
-
-**Option 2: manifest.json**
-1. Open `Packages/manifest.json`
-2. Add to dependencies:
-   ```json
-   {
-     "dependencies": {
-       "com.cysharp.unitask": "https://github.com/Cysharp/UniTask.git?path=src/UniTask/Assets/Plugins/UniTask",
-       "com.permaverse.ao-sdk": "https://github.com/simonfriend/AO-Unity-SDK.git"
-     }
-   }
-   ```
-
-**Why UniTask?**
-- 🚀 **Zero GC allocation** async operations
-- ⚡ **Better performance** for real-time networking
-- 🎮 **Unity-optimized** cancellation and lifecycle management
-
----
-
-## Usage
-
-After installation, you can:
-
-1. **Use the AOConnectManager** in your scene.
-2. Try the **BasicDemo** scene for a quick start. You can install sample content from the **Package Manager** UI. Look under **Permaverse AO Unity SDK** → **Samples** and click “Import” to bring a demo scene into your `Assets/` folder.
-3. Use `MessageHandler` to start to use AO as a back-end to create fully on-chain dApps.
-
-### Namespaces
-
-All runtime scripts are under the namespace `Permaverse.AO`. Example usage:
-
-```csharp
-using Permaverse.AO;
-using UnityEngine;
-
-public class ExampleAOUsage : MonoBehaviour
+Or add both to `Packages/manifest.json`:
+```json
 {
-    void Start()
-    {
-        Debug.Log(AOConnectManager.main.CurrentAddress);
-    }
+  "dependencies": {
+    "com.cysharp.unitask": "https://github.com/Cysharp/UniTask.git?path=src/UniTask/Assets/Plugins/UniTask",
+    "com.permaverse.ao-sdk": "https://github.com/simonfriend/AO-Unity-SDK.git"
+  }
 }
 ```
 
 ---
 
-## Documentation
+## 🚀 Quick Start
 
-For detailed usage and troubleshooting, see:
-- [Getting Started](GettingStarted.md)
+### 1. Add AOConnectManager
+Drag the **AOConnectManager** prefab from `Packages/Permaverse AO SDK/Runtime/Prefabs/` into your scene.
+
+### 2. Basic Usage
+```csharp
+using Permaverse.AO;
+using UnityEngine;
+
+public class AOExample : MonoBehaviour
+{
+    public MessageHandler messageHandler;
+    
+    void Start()
+    {
+        // Listen for wallet connections
+        AOConnectManager.main.OnWalletConnected += OnWalletConnected;
+    }
+    
+    void OnWalletConnected(WalletType walletType)
+    {
+        Debug.Log($"Connected: {walletType}");
+        SendMessage();
+    }
+    
+    async void SendMessage()
+    {
+        var tags = new List<Tag> { new Tag("Action", "GetInfo") };
+        
+        // Use HyperBEAM (fast)
+        var (success, result) = await messageHandler.SendRequestAsync(
+            "YOUR_PROCESS_ID", tags, method: MessageHandler.NetworkMethod.HyperBeamMessage
+        );
+        
+        // Or use Legacy AO
+        var (success2, result2) = await messageHandler.SendRequestAsync(
+            "YOUR_PROCESS_ID", tags, method: MessageHandler.NetworkMethod.Message
+        );
+        
+        // Or use Dryrun (testing)
+        var (success3, result3) = await messageHandler.SendRequestAsync(
+            "YOUR_PROCESS_ID", tags, method: MessageHandler.NetworkMethod.Dryrun
+        );
+    }
+}
+```
+
+### 3. WebGL Deployment
+1. Copy `Packages/Permaverse AO SDK/WebGLTemplates/` to `Assets/WebGLTemplates/`
+2. Set Player Settings: **Gamma** color, **Disabled** compression
+3. Build and run setup script in `WebGLBuild/build-tools/`
 
 ---
 
-## License
+## 📚 Documentation
 
-This project is open source under the [MIT License](LICENSE). Feel free to use, modify, and distribute as permitted.
+- **[Getting Started Guide](GettingStarted.md)** - Complete setup and usage guide
+- **[AO Cookbook](http://cookbook_ao.ar.io/)** - Learn AO concepts
+- **[HyperBEAM Documentation](https://hyperbeam.arweave.net/build/introduction/what-is-hyperbeam.html)** - Fast messaging system
+- **[GitHub Issues](https://github.com/simonfriend/AO-Unity-SDK/issues)** - Support
+
+---
+
+## 🌐 Networking Capabilities
+
+| Handler | Purpose | Supported Modes |
+|---------|---------|-----------------|
+| **MessageHandler** | Core networking | Legacy AO messages, HyperBEAM, Dryruns |
+| **EnqueueMessageHandler** | Rate-limited queue | All MessageHandler modes |
+| **PaginatedMessageHandler** | Scroll-based pagination | All MessageHandler modes |
+| **HyperBeamPathHandler** | Fast HyperBEAM queries | HyperBEAM only |
+| **GraphQLHandler** | Arweave network queries | GraphQL endpoints |
+
+### Network Modes Explained
+
+- **Legacy AO** (`NetworkMethod.Message`) - Traditional AO messages with results
+- **HyperBEAM** (`NetworkMethod.HyperBeamMessage`) - Fast local/remote processing
+- **Dryrun** (`NetworkMethod.Dryrun`) - Test messages without on-chain commitment
+
+---
+
+## 📄 License
+
+MIT License - see [LICENSE](LICENSE) file.
