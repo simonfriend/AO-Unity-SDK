@@ -57,20 +57,25 @@ namespace Permaverse.AO
 		public string editorAddress;
 		public static AOConnectManager main { get; private set; }
 
-		// Store both wallet infos
+		/// <summary>
+		/// Store wallet information for different wallet types
+		/// </summary>
 		[SerializeField] private AddressInfo arweaveAddressInfo;
 		[SerializeField] private AddressInfo evmAddressInfo;
 
-		// Track the order of connected wallets, first is main
+		/// <summary>
+		/// Track the order of connected wallets (first is main wallet)
+		/// </summary>
 		private List<WalletType> connectedWallets = new List<WalletType>();
 
-		// Old addressInfo is now obsolete, but keep for backward compatibility
-		[Obsolete][SerializeField] private AddressInfo addressInfo;
-
-		// Main wallet is always the first in the list
+		/// <summary>
+		/// Main wallet type (first connected wallet)
+		/// </summary>
 		public WalletType MainWalletType => connectedWallets.Count > 0 ? connectedWallets[0] : WalletType.None;
 
-		// Helper to get AddressInfo by WalletType
+		/// <summary>
+		/// Get AddressInfo by wallet type
+		/// </summary>
 		private AddressInfo GetAddressInfo(WalletType type)
 		{
 			switch (type)
@@ -82,24 +87,34 @@ namespace Permaverse.AO
 			}
 		}
 
-		// Main wallet info/properties
+		/// <summary>
+		/// Main wallet properties for easy access
+		/// </summary>
 		public string CurrentAddress => GetAddressInfo(MainWalletType)?.address;
 		public string CurrentBazarID => GetAddressInfo(MainWalletType)?.bazarProfileData?.Profile?.Id;
 		public BazarProfileData CurrentBazarProfileData => GetAddressInfo(MainWalletType)?.bazarProfileData;
 		public List<string> CurrentAddresses => GetAddressInfo(MainWalletType)?.allAddresses;
 		public SessionKeyInfo CurrentSessionKeyInfo => GetAddressInfo(MainWalletType)?.sessionKeyInfo;
-		// public string CurrentSessionAddress => GetAddressInfo(MainWalletType)?.sessionKeyInfo?.address;
 		public string CurrentSessionAddress => CurrentSessionKeyInfo?.address;
 
-		// Helper: check if a wallet is connected
+		/// <summary>
+		/// Check if a specific wallet type is connected
+		/// </summary>
 		public bool IsWalletConnected(WalletType type) => connectedWallets.Contains(type);
 
-		// Helper: get secondary wallet info (if needed)
+		/// <summary>
+		/// Get secondary wallet information (for multi-wallet scenarios)
+		/// </summary>
 		public AddressInfo GetSecondaryWalletInfo(WalletType type) => GetAddressInfo(type);
 
+		/// <summary>
+		/// Event fired when the current address changes
+		/// </summary>
 		public Action OnCurrentAddressChange;
 
-		// Add per-wallet-type connection events
+		/// <summary>
+		/// Event fired when a wallet of specific type is connected
+		/// </summary>
 		public event Action<WalletType> OnWalletConnected;
 
 		[Space]
@@ -112,10 +127,11 @@ namespace Permaverse.AO
 		public bool showLogs = false;
 
 		[Header("HyperBEAM")]
+		[Tooltip("URL for HyperBEAM service endpoint")]
 		public string hyperBeamUrl = "http://localhost:8734";
 
-		// [Header("Editor Testing")]
-		// [Tooltip("Path to Arweave wallet keyfile for editor testing")]
+		[Header("Editor Testing")]
+		[Tooltip("Path to Arweave wallet keyfile for editor testing")]
 		[HideInInspector] public string editorWalletPath = "";
 
 		[Header("UI")]
@@ -545,13 +561,6 @@ namespace Permaverse.AO
 			}
 
 			RefreshPage();
-
-			// // Clear all connected wallets
-			// connectedWallets.Clear();
-			// arweaveAddressInfo = null;
-			// evmAddressInfo = null;
-
-			// OnMainAddressChanged();
 		}
 
 		public void SendNotification(string title, string text)
@@ -776,160 +785,7 @@ namespace Permaverse.AO
 				Debug.LogError($"[AOConnectManager] {errorMsg}");
 				InvokeCallback(objectCallback, methodCallback, id, errorMsg);
 			}
-		}
-
-		/* COMMENTED OUT - OLD COROUTINE VERSION
-		private IEnumerator SendMessageViaNodeScript(string pid, string data, string tags, string id, string hyperBeamUrl, string objectCallback, string methodCallback, bool isLegacyMode = false)
-		{
-			string modeLabel = isLegacyMode ? "Legacy AO" : "HyperBEAM";
-			Debug.Log($"[AOConnectManager] Sending {modeLabel} message via Node.js script in editor");
-
-			// Build command arguments
-			var arguments = new List<string>();
-
-			// Add script path
-			string scriptPath = GetNodeScriptPath();
-			if (string.IsNullOrEmpty(scriptPath))
-			{
-				string errorMsg = "aoconnect-editor.js script not found";
-				Debug.LogError($"[AOConnectManager] {errorMsg}");
-				InvokeCallback(objectCallback, methodCallback, id, errorMsg);
-				yield break;
-			}
-
-			arguments.Add(scriptPath);
-
-			// Add configuration
-			arguments.Add("--process-id");
-			arguments.Add(pid);
-			arguments.Add("--wallet");
-			arguments.Add(editorWalletPath);
-			arguments.Add("--output");
-			arguments.Add("unity");
-			arguments.Add("--mode");
-			arguments.Add(isLegacyMode ? "legacy" : "hyperbeam");
-			arguments.Add("--log-level");
-			arguments.Add("none"); // Use silent mode for production usage
-			
-			// Add HyperBEAM URL only for HyperBEAM mode
-			if (!isLegacyMode && !string.IsNullOrEmpty(hyperBeamUrl))
-			{
-				arguments.Add("--hyperbeam-url");
-				arguments.Add(hyperBeamUrl);
-			}
-			
-			// Add unique ID for request/response correlation
-			if (!string.IsNullOrEmpty(id))
-			{
-				arguments.Add("--unique-id");
-				arguments.Add(id);
-			}
-
-			// Add data if provided using base64 encoding to avoid command line escaping issues
-			if (!string.IsNullOrEmpty(data))
-			{
-				// Encode data as base64 to avoid command line escaping issues with JSON
-				byte[] dataBytes = System.Text.Encoding.UTF8.GetBytes(data);
-				string dataBase64 = System.Convert.ToBase64String(dataBytes);
-				
-				arguments.Add("--data-base64");
-				arguments.Add(dataBase64);
-				Debug.Log($"[AOConnectManager] Encoding data as base64 ({dataBytes.Length} bytes)");
-				Debug.Log($"[AOConnectManager] Data: {data}");
-			}
-
-			// Parse and add tags using base64 encoding for the entire tags object
-			if (!string.IsNullOrEmpty(tags))
-			{
-				try
-				{
-					var tagsJson = SimpleJSON.JSON.Parse(tags);
-					if (tagsJson.IsArray)
-					{
-						// Convert tags array directly to JSON object format for base64 encoding
-						var tagsObjectJson = new SimpleJSON.JSONObject();
-						for (int i = 0; i < tagsJson.AsArray.Count; i++)
-						{
-							var tagNode = tagsJson.AsArray[i];
-							if (tagNode.HasKey("name") && tagNode.HasKey("value"))
-							{
-								string tagName = tagNode["name"];
-								string tagValue = tagNode["value"];
-								tagsObjectJson[tagName] = tagValue;
-							}
-						}
-						
-						// Encode tags object as base64
-						string tagsObjectJsonString = tagsObjectJson.ToString();
-						byte[] tagsBytes = System.Text.Encoding.UTF8.GetBytes(tagsObjectJsonString);
-						string tagsBase64 = System.Convert.ToBase64String(tagsBytes);
-						
-						arguments.Add("--tags-base64");
-						arguments.Add(tagsBase64);
-						Debug.Log($"[AOConnectManager] Encoding tags as base64: {tagsObjectJsonString}");
-					}
-				}
-				catch (System.Exception e)
-				{
-					Debug.LogWarning($"[AOConnectManager] Failed to parse tags: {e.Message}");
-				}
-			}
-
-			// Execute Node.js script asynchronously to avoid blocking the main thread
-			Task<string> nodeTask = null;
-			try
-			{
-				nodeTask = NodeJsUtils.ExecuteNodeScriptAsync(arguments.Select(arg => $"\"{arg}\"").ToArray());
-			}
-			catch (System.Exception e)
-			{
-				string errorMsg = $"Failed to start Node.js execution: {e.Message}";
-				Debug.LogError($"[AOConnectManager] {errorMsg}");
-				InvokeCallback(objectCallback, methodCallback, id, errorMsg);
-				yield break;
-			}
-
-			// Wait for the task to complete without blocking the main thread
-			while (!nodeTask.IsCompleted)
-			{
-				yield return null; // Allow Unity to continue processing other frames
-			}
-
-			// Handle the result
-			try
-			{
-				if (nodeTask.IsFaulted)
-				{
-					string errorMsg = $"Node.js script failed: {nodeTask.Exception?.GetBaseException().Message}";
-					Debug.LogError($"[AOConnectManager] {errorMsg}");
-					InvokeCallback(objectCallback, methodCallback, id, errorMsg);
-					yield break;
-				}
-
-				string output = nodeTask.Result;
-				Debug.Log($"[AOConnectManager] Node.js script completed successfully. Output: {output}");
-
-				// Parse response - Node.js script should return the same format as JavaScript sendMessageHyperBeam
-				// Expected format: { "Messages": [], "Spawns": [], "Output": "", "Error": null, "uniqueID": "..." }
-				var response = SimpleJSON.JSON.Parse(output);
-				
-				// Call the callback with the successful response
-				InvokeCallback(objectCallback, methodCallback, id, null, output);
-				
-				// Log any errors from the response
-				if (response.HasKey("Error") && !response["Error"].IsNull && !string.IsNullOrEmpty(response["Error"]))
-				{
-					Debug.LogWarning($"[AOConnectManager] HyperBEAM response contains error: {response["Error"]}");
-				}
-			}
-			catch (System.Exception e)
-			{
-				string errorMsg = $"Failed to parse Node.js response: {e.Message}";
-				Debug.LogError($"[AOConnectManager] {errorMsg}");
-				InvokeCallback(objectCallback, methodCallback, id, errorMsg);
-			}
-		}
-		*/
+		}	
 
 		private string GetNodeScriptPath()
 		{

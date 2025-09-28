@@ -204,7 +204,7 @@ namespace Permaverse.AO
 		/// <summary>
 		/// Build HyperBEAM static path for cached content
 		/// </summary>
-		public string BuildStaticPath(string pid, string cachePath, bool now = true, bool addCachePath = true, bool serialize = true)
+		public string BuildStaticPath(string pid, string cachePath, bool now = true, bool addCachePath = false, bool serialize = true)
 		{
 			string baseUrl = $"{HyperBeamUrl}/{pid}~process@1.0/{(now ? "now" : "compute")}";
 			string cachePrefix = addCachePath ? "/cache" : "";
@@ -402,77 +402,5 @@ namespace Permaverse.AO
 
 		#endregion
 
-		#region Preset Helpers
-
-		/// <summary>
-		/// Common preset methods for frequently used operations
-		/// </summary>
-		public static class Presets
-		{
-			/// <summary>
-			/// Get user information preset
-			/// </summary>
-			public static PathBuilder GetUserInfo(HyperBeamPathHandler handler, string pid, string userId = null)
-			{
-				var builder = handler.ForProcess(pid).Method("GetUserInfo");
-				if (!string.IsNullOrEmpty(userId))
-				{
-					builder.Parameter("UserId", userId);
-				}
-				return builder;
-			}
-
-			/// <summary>
-			/// Get leaderboard preset
-			/// </summary>
-			public static PathBuilder GetLeaderboard(HyperBeamPathHandler handler, string pid, string wallet = null, int pageIndex = 1, int pageSize = 30)
-			{
-				var builder = handler.ForProcess(pid)
-					.Method("GetLeaderboard")
-					.Parameter("PageIndex", pageIndex.ToString())
-					.Parameter("PageSize", pageSize.ToString());
-				
-				if (!string.IsNullOrEmpty(wallet))
-				{
-					builder.Parameter("Wallet", wallet);
-				}
-				
-				return builder;
-			}
-
-			/// <summary>
-			/// Get game info preset
-			/// </summary>
-			public static PathBuilder GetGameInfo(HyperBeamPathHandler handler, string pid, string walletAddress = null)
-			{
-				var builder = handler.ForProcess(pid).Method("GetGameInfo");
-				if (!string.IsNullOrEmpty(walletAddress))
-				{
-					builder.Parameter("WalletAddress", walletAddress);
-				}
-				return builder;
-			}
-
-			/// <summary>
-			/// Get match info preset
-			/// </summary>
-			public static PathBuilder GetMatchInfo(HyperBeamPathHandler handler, string pid)
-			{
-				return handler.ForProcess(pid).Method("GetMatchInfo");
-			}
-
-			/// <summary>
-			/// Get process events preset
-			/// </summary>
-			public static PathBuilder GetProcessEvents(HyperBeamPathHandler handler, string pid, long fromNonce = 0, int limit = 50)
-			{
-				return handler.ForProcess(pid)
-					.Method("GetProcessEvents")
-					.Parameter("FromNonce", fromNonce.ToString())
-					.Parameter("Limit", limit.ToString());
-			}
-		}
-
-		#endregion
 	}
 }

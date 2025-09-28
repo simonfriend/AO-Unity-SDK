@@ -1,53 +1,69 @@
 using System;
-using System.Collections;
 using System.Collections.Generic;
 using System.Threading;
 using Cysharp.Threading.Tasks;
 using UnityEngine;
 using UnityEngine.Networking;
+
 namespace Permaverse.AO
 {
+	/// <summary>
+	/// Handles polling and processing of AO process results using UniTask for async operations.
+	/// Automatically fetches new results at regular intervals and provides callbacks for result processing.
+	/// </summary>
 	public class ResultsMessageHandler : MonoBehaviour
 	{
-		[Header("ResultsMessageHandler")]
+		[Header("Configuration")]
+		[Tooltip("Process ID to fetch results from")]
 		public string pid;
+		
+		[Tooltip("Number of results to fetch on initial request")]
 		public int initialResultSize = 10;
+		
+		[Tooltip("Interval in seconds between result polling requests")]
 		public float askInterval = 5;
+		
+		[Tooltip("Maximum number of result batches to keep in memory")]
 		public int resultsToKeep = 10;
+		
+		[Tooltip("Starting cursor position for initial fetch (-1 for latest)")]
 		public long initialFrom = -1;
+		
+		[Tooltip("Base URL for the AO results endpoint")]
 		public string baseUrl = "https://cu.ao-testnet.xyz/results/";
-		// public bool callbackInAscOrder = true;
-
+		[Header("Runtime Data")]
+		[Tooltip("List of recent result batches received")]
 		public List<Results> lastResults;
 
+		[Header("Callbacks")]
+		[Tooltip("Callback invoked when new results are received")]
 		public Action<Results> ResultsCallback;
 
-		[Header("Debug")]
-		public bool showLogs = true;
+		protected bool showLogs => AOConnectManager.main.showLogs;
 
-		[SerializeField] protected string firstCursor = null;
+
+		protected string firstCursor = null;
 
 		protected int timeout = 60;
-		// protected Coroutine getResultsCoroutine;
 		
-		// Single shared cancellation token source for all operations
+		/// <summary>
+		/// Shared cancellation token source for all async operations
+		/// </summary>
 		private CancellationTokenSource _allOperationsCancellationTokenSource;
 
 		private void Awake()
 		{
-			// Initialize the cancellation token source
 			_allOperationsCancellationTokenSource = new CancellationTokenSource();
 		}
 
 		private void OnDestroy()
 		{
-			// Automatically cancel all operations when GameObject is destroyed
 			_allOperationsCancellationTokenSource?.Cancel();
 			_allOperationsCancellationTokenSource?.Dispose();
 		}
 
 		/// <summary>
-		/// Get shared cancellation token for all operations
+		/// Gets or creates a shared cancellation token for all async operations
 		/// </summary>
 		private CancellationToken GetSharedCancellationToken()
 		{
@@ -59,61 +75,37 @@ namespace Permaverse.AO
 			return _allOperationsCancellationTokenSource.Token;
 		}
 
-		private void Start()
-		{
-			if (!Application.isEditor)
-			{
-				showLogs = UrlUtilities.GetUrlParameterValue("showLogs") == "true";
-			}
-			else
-			{
-				showLogs = true;
-			}
-		}
-	
+		/// <summary>
+		/// Starts polling for results from the specified AO process
+		/// </summary>
+		/// <param name="pid">Process ID to poll (null to use current)</param>
+		/// <param name="initialResultSize">Number of results for initial fetch (-1 to use current)</param>
+		/// <param name="askInterval">Polling interval in seconds (-1 to use current)</param>
+		/// <param name="initialFrom">Starting cursor position (-1 to use current)</param>
 		public void StartGettingResults(string pid = null, int initialResultSize = -1, float askInterval = -1, long initialFrom = -1)
 		{
 			StopGettingResults();
 			lastResults.Clear();
-
 			firstCursor = null;
 
-			if (pid != null)
-			{
-				this.pid = pid;
-			}
+			// Update configuration if new values provided
+			if (pid != null) this.pid = pid;
+			if (initialResultSize != -1) this.initialResultSize = initialResultSize;
+			if (askInterval != -1) this.askInterval = askInterval;
+			if (initialFrom != -1) this.initialFrom = initialFrom;
 
-			if (initialResultSize != -1)
-			{
-				this.initialResultSize = initialResultSize;
-			}
-
-			if (askInterval != -1)
-			{
-				this.askInterval = askInterval;
-			}
-
-			if (initialFrom != -1)
-			{
-				this.initialFrom = initialFrom;
-			}
-
-			// Start async operation
+			// Start async polling operation
 			GetResultsAsync(GetSharedCancellationToken()).Forget();
 		}
 
+		/// <summary>
+		/// Stops polling for results and cancels all ongoing operations
+		/// </summary>
 		public void StopGettingResults()
 		{
-			// Cancel operations using the token
 			_allOperationsCancellationTokenSource?.Cancel();
 			_allOperationsCancellationTokenSource?.Dispose();
 			_allOperationsCancellationTokenSource = new CancellationTokenSource();
-			
-			// Keep old coroutine cleanup for compatibility
-			// if (getResultsCoroutine != null)
-			// {
-			// 	StopCoroutine(getResultsCoroutine);
-			// }
 		}
 
 		/// <summary>
@@ -192,86 +184,6 @@ namespace Permaverse.AO
 			}
 		}
 
-		/* COMMENTED OUT - OLD COROUTINE VERSION
-		protected IEnumerator GetResultsCoroutine()
-		{
-			lastResults = new List<Results>();
-
-			while (true)
-			{
-				string parameters;
-
-				if (lastResults.Count == 0)
-				{
-					parameters = $"limit={initialResultSize}";
-
-					if (initialFrom != -1)
-					{
-						parameters += $"&from={initialFrom}";
-					}
-				}
-				else
-				{
-					parameters = $"from={lastResults[lastResults.Count - 1].Edges[0].Cursor}";
-				}
-
-				string url = baseUrl + pid + "?sort=DESC&" + parameters;
-
-				bool done = false;
-				Results result = null;
-				string jsonResult = null;
-
-				Action<Results, string> callback = (Results res, string jsonRes) =>
-				{
-					done = true;
-					result = res;
-					jsonResult = jsonRes;
-				};
-
-				float timeElapsed = 0f;
-				if (showLogs)
-				{
-					Debug.Log($"[{gameObject.name}] Sending request with url: {url}");
-				}
-
-				StartCoroutine(SendHttpPostRequest(url, callback));
-
-				while (!done)
-				{
-					timeElapsed += Time.deltaTime;
-					yield return null;
-				}
-
-				if (result != null && result.Edges.Count != 0)
-				{
-					if (showLogs)
-					{
-						Debug.Log($"[{gameObject.name}] Sent request with url: {url} || Received Result after {timeElapsed}s: {jsonResult}");
-					}
-
-					if (lastResults.Count == 0)
-					{
-						firstCursor = result.Edges[result.Edges.Count - 1].Cursor;
-					}
-
-					lastResults.Add(result);
-
-					if (lastResults.Count > resultsToKeep)
-					{
-						lastResults.RemoveAt(0);
-					}
-
-					if (ResultsCallback != null)
-					{
-						ResultsCallback.Invoke(result);
-					}
-				}
-
-				yield return new WaitForSeconds(askInterval);
-			}
-		}
-		*/
-
 		/// <summary>
 		/// Async version of HTTP request using UniTask
 		/// </summary>
@@ -318,34 +230,5 @@ namespace Permaverse.AO
 				return (null, ex.Message);
 			}
 		}
-
-		/* COMMENTED OUT - OLD COROUTINE VERSION
-		protected IEnumerator SendHttpPostRequest(string url, Action<Results, string> callback)
-		{
-			UnityWebRequest request = new UnityWebRequest(url, "GET");
-			request.downloadHandler = new DownloadHandlerBuffer();
-			request.timeout = timeout;
-			request.SetRequestHeader("Content-Type", "application/json");
-
-			yield return request.SendWebRequest();
-
-			Results results;
-
-			if (request.result != UnityWebRequest.Result.Success)
-			{
-				Debug.LogError($"[{gameObject.name}] HTTP Post Error: {request.error}");
-
-				results = null;
-
-				callback(results, request.error);
-			}
-			else
-			{
-				results = new Results(request.downloadHandler.text);
-
-				callback(results, request.downloadHandler.text);
-			}
-		}
-		*/
 	}
 }
