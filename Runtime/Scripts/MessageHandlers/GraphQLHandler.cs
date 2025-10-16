@@ -392,6 +392,9 @@ namespace Permaverse.AO
                     // Create Message from GraphQL data
                     var messageJson = new JSONObject();
                     
+                    // Add transaction ID to message JSON for Id property
+                    messageJson["id"] = txId;
+                    
                     // Add transaction ID as special tag
                     var tagsArray = new JSONArray();
                     tagsArray.Add(new Tag("Transaction-Id", txId).ToJson());

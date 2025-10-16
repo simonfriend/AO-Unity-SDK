@@ -17,17 +17,17 @@ namespace Permaverse.AO
 		[Header("HyperBEAM Configuration")]
 		[Tooltip("Override HyperBEAM URL. If empty, uses AOConnectManager.main.hyperBeamUrl")]
 		public string hyperBeamUrlOverride = "";  // Empty = use AOConnectManager default
-		
+
 		[Header("Request Settings")]
 		[Tooltip("Whether to retry failed requests")]
 		public bool resendIfResultFalse = true;
-		
+
 		[Tooltip("Maximum number of retry attempts for failed requests")]
 		public int maxRetries = 5;
-		
+
 		[Tooltip("Delay between retry attempts")]
 		public List<int> resendDelays = new List<int> { 1, 5, 10, 30 };
-		
+
 		protected float defaultDelay = 5f;
 
 		protected bool showLogs => AOConnectManager.main.showLogs;
@@ -52,7 +52,7 @@ namespace Permaverse.AO
 				sharedCancellationTokenSource.Dispose();
 			}
 			sharedCancellationTokenSource = new CancellationTokenSource();
-			
+
 			if (showLogs)
 				Debug.Log("[HyperBeamPathHandler] Force stopped and reset all operations");
 		}
@@ -110,32 +110,32 @@ namespace Permaverse.AO
 				try
 				{
 					(bool success, string result) = await SendPathOnceAsync(url, serialize, cancellationToken);
-					
+
 					// If successful, call callback and return immediately
 					if (success)
 					{
 						callback?.Invoke(true, result);
 						return (true, result);
 					}
-					
+
 					// If we don't retry on failure, call callback and return immediately
 					if (!resendIfResultFalse)
 					{
 						callback?.Invoke(false, result);
 						return (false, result);
 					}
-					
+
 					// If this was the last attempt, return failure
 					if (attempt == maxRetries)
 					{
 						callback?.Invoke(false, result);
 						return (false, result);
 					}
-					
+
 					// Calculate delay for next retry - use last delay if we run out of delays
 					float delay = attempt < resendDelays.Count ? resendDelays[attempt] : (resendDelays.Count > 0 ? resendDelays.Last() : defaultDelay);
 					if (showLogs) Debug.Log($"[{gameObject.name}] Retrying HyperBEAM path request in {delay} seconds (attempt {attempt + 2})");
-					
+
 					await UniTask.Delay(TimeSpan.FromSeconds(delay), cancellationToken: cancellationToken);
 				}
 				catch (OperationCanceledException)
@@ -155,7 +155,7 @@ namespace Permaverse.AO
 					}
 				}
 			}
-			
+
 			return (false, null);
 		}
 
@@ -165,9 +165,9 @@ namespace Permaverse.AO
 		private async UniTask<(bool success, string result)> SendPathOnceAsync(string url, bool serialize = true, CancellationToken cancellationToken = default)
 		{
 			if (showLogs) Debug.Log($"[{gameObject.name}] Sending HyperBEAM path request to: {url}");
-			
+
 			using var request = UnityWebRequest.Get(url);
-			
+
 			try
 			{
 				await request.SendWebRequest().ToUniTask(cancellationToken: cancellationToken);
@@ -183,7 +183,7 @@ namespace Permaverse.AO
 				// Handle other exceptions during the request
 				if (showLogs) Debug.LogError($"[{gameObject.name}] HyperBEAM path Exception: {ex.Message}");
 			}
-			
+
 			if (request.result == UnityWebRequest.Result.Success)
 			{
 				string responseData = ParseHyperBeamResponse(request.downloadHandler.text, serialize);
@@ -204,22 +204,58 @@ namespace Permaverse.AO
 		/// <summary>
 		/// Build HyperBEAM static path for cached content
 		/// </summary>
-		public string BuildStaticPath(string pid, string cachePath, bool now = true, bool addCachePath = false, bool serialize = true)
+		/// <param name="slot">Optional slot number for compute results. If set and now=false, uses "compute={slot}" instead of "compute"</param>
+		public string BuildStaticPath(string pid, string path, bool now = false, bool addCachePath = false, bool serialize = true, long? slot = null)
 		{
-			string baseUrl = $"{HyperBeamUrl}/{pid}~process@1.0/{(now ? "now" : "compute")}";
+			// Determine compute mode: "now", "compute", or "compute={slot}"
+			string computeMode;
+			if (now)
+			{
+				computeMode = "now";
+			}
+			else if (slot.HasValue)
+			{
+				computeMode = $"compute={slot.Value}";
+			}
+			else
+			{
+				computeMode = "compute";
+			}
+
+			string baseUrl = $"{HyperBeamUrl}/{pid}~process@1.0/{computeMode}";
 			string cachePrefix = addCachePath ? "/cache" : "";
-			string serializeSuffix = serialize ? "/serialize~json@1.0" : "";
-			return $"{baseUrl}{cachePrefix}/{cachePath}{serializeSuffix}";
+			// string serializeSuffix = serialize ? "/serialize~json@1.0" : "";
+			string serializeSuffix = serialize ? "?accept=application/json&accept-bundle=true" : "";
+
+
+			return $"{baseUrl}{cachePrefix}/{path}{serializeSuffix}";
 		}
 
 		/// <summary>
 		/// Build HyperBEAM dynamic path with parameters
 		/// </summary>
-		public string BuildDynamicPath(string pid, string methodName, List<Tag> parameters, bool now = true, string moduleId = null, bool serialize = true)
+		/// <param name="slot">Optional slot number for compute results. If set and now=false, uses "compute={slot}" instead of "compute"</param>
+		public string BuildDynamicPath(string pid, string methodName, List<Tag> parameters, bool now = false, string moduleId = null, bool serialize = true, long? slot = null)
 		{
-			string baseUrl = $"{HyperBeamUrl}/{pid}~process@1.0/{(now ? "now" : "compute")}";
+			// Determine compute mode: "now", "compute", or "compute={slot}"
+			string computeMode;
+			if (now)
+			{
+				computeMode = "now";
+			}
+			else if (slot.HasValue)
+			{
+				computeMode = $"compute={slot.Value}";
+			}
+			else
+			{
+				computeMode = "compute";
+			}
+
+			string baseUrl = $"{HyperBeamUrl}/{pid}~process@1.0/{computeMode}";
 			string paramString = BuildParameterString(parameters, moduleId);
-			string serializeSuffix = serialize ? "/serialize~json@1.0" : "";
+			// string serializeSuffix = serialize ? "/serialize~json@1.0" : "";
+			string serializeSuffix = serialize ? "?accept=application/json&accept-bundle=true" : "";
 			return $"{baseUrl}/~lua@5.3a&module={moduleId ?? "default"}{paramString}/{methodName}{serializeSuffix}";
 		}
 
@@ -254,14 +290,23 @@ namespace Permaverse.AO
 		{
 			if (wasSerialized)
 			{
-				// With new header-based approach, HyperBEAM should return JSON directly
-				// But we might still need to handle the bundle format: {"ao-result":"body","body":"{data}","device":"json@1.0"}
+				// With new query parameter approach (?accept=application/json&accept-bundle=true), HyperBEAM returns a bundle format:
+				// {"ao-result":"body","body":{data},"commitments":{...},"status":200}
 				try
 				{
 					var responseNode = SimpleJSON.JSON.Parse(response);
 					if (responseNode.HasKey("body"))
 					{
-						return responseNode["body"];
+						var bodyNode = responseNode["body"];
+						
+						// If body is a string, return it as-is
+						if (bodyNode.IsString)
+						{
+							return bodyNode.Value;
+						}
+						
+						// If body is an object or array, serialize it back to JSON string
+						return bodyNode.ToString();
 					}
 				}
 				catch (Exception e)
@@ -282,19 +327,21 @@ namespace Permaverse.AO
 		/// <summary>
 		/// Send static HyperBEAM request for cached content
 		/// </summary>
-		public async UniTask<(bool success, string result)> SendStaticRequestAsync(string pid, string cachePath, bool now = true, bool addCachePath = true, bool serialize = true, Action<bool, string> callback = null, CancellationToken cancellationToken = default)
+		/// <param name="slot">Optional slot number for compute results. If set and now=false, uses "compute={slot}" instead of "compute"</param>
+		public async UniTask<(bool success, string result)> SendStaticRequestAsync(string pid, string path, bool now = true, bool addCachePath = true, bool serialize = true, long? slot = null, Action<bool, string> callback = null, CancellationToken cancellationToken = default)
 		{
-			string path = BuildStaticPath(pid, cachePath, now, addCachePath, serialize);
-			return await SendPathAsync(path, serialize: serialize, callback: callback, cancellationToken: cancellationToken);
+			string fullPath = BuildStaticPath(pid, path, now, addCachePath, serialize, slot);
+			return await SendPathAsync(fullPath, serialize: serialize, callback: callback, cancellationToken: cancellationToken);
 		}
 
 		/// <summary>
 		/// Send dynamic HyperBEAM request with method and parameters
 		/// </summary>
-		public async UniTask<(bool success, string result)> SendDynamicRequestAsync(string pid, string methodName, List<Tag> parameters, bool now = true, string moduleId = null, bool serialize = true, Action<bool, string> callback = null, CancellationToken cancellationToken = default)
+		/// <param name="slot">Optional slot number for compute results. If set and now=false, uses "compute={slot}" instead of "compute"</param>
+		public async UniTask<(bool success, string result)> SendDynamicRequestAsync(string pid, string methodName, List<Tag> parameters, bool now = true, string moduleId = null, bool serialize = true, long? slot = null, Action<bool, string> callback = null, CancellationToken cancellationToken = default)
 		{
-			string path = BuildDynamicPath(pid, methodName, parameters, now, moduleId, serialize);
-			var (success, result) = await SendPathAsync(path, serialize: serialize, callback: callback, cancellationToken: cancellationToken);
+			string fullPath = BuildDynamicPath(pid, methodName, parameters, now, moduleId, serialize, slot);
+			var (success, result) = await SendPathAsync(fullPath, serialize: serialize, callback: callback, cancellationToken: cancellationToken);
 			return (success, result);
 		}
 
@@ -319,6 +366,7 @@ namespace Permaverse.AO
 			private string moduleId = null;
 			private bool now = true;
 			private bool serialize = true;
+			private long? slot = null;
 
 			internal PathBuilder(HyperBeamPathHandler handler, string pid)
 			{
@@ -375,6 +423,15 @@ namespace Permaverse.AO
 			}
 
 			/// <summary>
+			/// Set the slot number for compute results
+			/// </summary>
+			public PathBuilder Slot(long slot)
+			{
+				this.slot = slot;
+				return this;
+			}
+
+			/// <summary>
 			/// Set whether to serialize the response
 			/// </summary>
 			public PathBuilder Serialize(bool serialize = true)
@@ -388,15 +445,15 @@ namespace Permaverse.AO
 			/// </summary>
 			public string BuildUrl()
 			{
-				return handler.BuildDynamicPath(pid, methodName, parameters, now, moduleId, serialize);
+				return handler.BuildDynamicPath(pid, methodName, parameters, now, moduleId, serialize, slot);
 			}
 
 			/// <summary>
 			/// Execute the request and return tuple result
 			/// </summary>
-			public async UniTask<(bool success, string result)> ExecuteAsync(Action<bool,string> callback = null, CancellationToken cancellationToken = default)
+			public async UniTask<(bool success, string result)> ExecuteAsync(Action<bool, string> callback = null, CancellationToken cancellationToken = default)
 			{
-				return await handler.SendDynamicRequestAsync(pid, methodName, parameters, now, moduleId, serialize, callback, cancellationToken);
+				return await handler.SendDynamicRequestAsync(pid, methodName, parameters, now, moduleId, serialize, slot, callback, cancellationToken);
 			}
 		}
 

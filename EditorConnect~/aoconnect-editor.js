@@ -13,8 +13,8 @@ const fs = require('fs');
 const path = require('path');
 
 // Configuration
-const DEFAULT_PROCESS_ID = "t9qaxM7bEyxrzJ2PG52qyvP4h3ub6DG775M6XbSAYsY"; // Your StarGrid process ID
-const DEFAULT_HYPERBEAM_URL = "http://localhost:8734";
+const DEFAULT_PROCESS_ID = "c9pY_6qwccWuUXklVMURri56cYjYUpKS0B_wSegjDkk"; // Your StarGrid process ID
+const DEFAULT_HYPERBEAM_URL = "https://forward.computer";
 const DEFAULT_WALLET_PATH = path.join(__dirname, '..', 'wallet.json');
 
 // Logging helper functions
@@ -227,10 +227,12 @@ async function sendHyperBeamMessage(options) {
     try {
         // Build request parameters
         const requestParams = {
-            path: `/${options.processId}~process@1.0/push/serialize~json@1.0`,
+            path: `/${options.processId}~process@1.0/push`,
             method: "POST",
             target: options.processId,
             signingFormat: "ANS-104",
+            "accept-bundle": "true",
+            "require-codec": "application/json",
         };
 
         // Add data if provided
@@ -277,79 +279,98 @@ function formatOutput(result, options) {
         case 'unity':
             // Unity-friendly JSON format - same as JavaScript sendMessage functions
             try {
-                let resultData;
+                let aoResponse;
                 
                 if (options.mode === 'legacy') {
                     // For legacy mode, the result should already be in the right format
-                    resultData = result;
+                    aoResponse = result;
                 } else {
-                    // For HyperBEAM mode, handle nested response structure
-                    // HyperBEAM response: result.body -> parsed.json.body -> actual AO response
+                    // For HyperBEAM mode with aoconnect 0.0.90
+                    // Response structure: result.body contains a JSON string with outbox, output, etc.
                     if (result && result.body) {
-                        try {
-                            // First level: parse result.body (HyperBEAM wrapper) - handle both string and object
-                            let parsed;
-                            if (typeof result.body === 'string') {
-                                parsed = JSON.parse(result.body);
-                            } else {
-                                // result.body is already an object
-                                parsed = result.body;
-                            }
-                            logVerbose(options, '🔍 Parsed HyperBEAM wrapper:', JSON.stringify(parsed, null, 2));
-                            
-                            if (parsed && parsed.json && parsed.json.body) {
-                                // Second level: parse parsed.json.body (actual AO response) - handle both string and object
-                                let aoResponse;
-                                if (typeof parsed.json.body === 'string') {
-                                    aoResponse = JSON.parse(parsed.json.body);
-                                } else {
-                                    // parsed.json.body is already an object
-                                    aoResponse = parsed.json.body;
-                                }
-                                logVerbose(options, '🔍 Parsed AO response:', JSON.stringify(aoResponse, null, 2));
-                                resultData = aoResponse;
-                            } else if (parsed && parsed.body) {
-                                // Alternative structure: try parsing parsed.body - handle both string and object
-                                try {
-                                    let aoResponse;
-                                    if (typeof parsed.body === 'string') {
-                                        aoResponse = JSON.parse(parsed.body);
-                                    } else {
-                                        aoResponse = parsed.body;
-                                    }
-                                    resultData = aoResponse;
-                                } catch {
-                                    resultData = parsed;
-                                }
-                            } else if (parsed) {
-                                // Fallback if structure is different
-                                resultData = parsed;
-                            } else {
-                                throw new Error("Empty parsed response");
-                            }
-                        } catch (parseError) {
-                            logVerbose(options, '⚠️ Could not parse HyperBEAM response body as JSON:', parseError.message);
-                            logVerbose(options, '⚠️ Raw result.body:', result.body);
-                            // Fallback to full result
-                            resultData = result;
+                        // Parse the body string to get the actual AO response
+                        if (typeof result.body === 'string') {
+                            aoResponse = JSON.parse(result.body);
+                            logVerbose(options, '🔍 Parsed HyperBEAM response:', JSON.stringify(aoResponse, null, 2));
+                        } else {
+                            // Already parsed
+                            aoResponse = result.body;
                         }
-                    } else if (result && result.json && result.json.body) {
-                        // Direct structure handling
-                        resultData = result.json.body;
-                    } else if (result) {
-                        // Fallback to full result if body structure is different
-                        resultData = result;
                     } else {
-                        throw new Error("Empty response");
+                        throw new Error("No body in HyperBEAM response");
                     }
                 }
 
-                // Return the same format as JavaScript sendMessage functions
+                // Convert HyperBEAM response format to Unity format
+                // HyperBEAM gives us: { outbox: [...], output: {data, print}, slot: N, ... }
+                // Unity NodeCU expects: { Messages: [...], Output: {data, print}, Spawns: [], ... }
+                
+                // Convert HyperBEAM outbox messages to Unity Message format
+                // HyperBEAM: {Action: "X", Data: "Y", Target: "Z", ...}
+                // Unity: {tags: [{name: "Action", value: "X"}], data: "Y", target: "Z"}
+                const convertedMessages = (aoResponse.outbox || aoResponse.Messages || []).map(msg => {
+                    // Special fields that shouldn't be tags
+                    const specialFields = ['Data', 'data', 'Target', 'target', 'Anchor', 'anchor', 'Id', 'id'];
+                    
+                    const unityMessage = {
+                        tags: []
+                    };
+                    
+                    // Convert all properties to tags except special fields
+                    for (const [key, value] of Object.entries(msg)) {
+                        if (specialFields.includes(key)) {
+                            // Map special fields to their Unity lowercase equivalents
+                            const lowerKey = key.toLowerCase();
+                            unityMessage[lowerKey] = value;
+                        } else {
+                            // Everything else becomes a tag
+                            unityMessage.tags.push({
+                                name: key,
+                                value: String(value)
+                            });
+                        }
+                    }
+                    
+                    return unityMessage;
+                });
+                
+                // Handle Output field - NodeCU expects an object with 'data' and 'print' fields
+                let outputObj;
+                if (aoResponse.output && typeof aoResponse.output === 'object') {
+                    // HyperBEAM format: output is already an object
+                    // Parse 'print' field - can be string "true"/"false" or boolean
+                    let printValue = true;
+                    if (aoResponse.output.print !== undefined) {
+                        if (typeof aoResponse.output.print === 'string') {
+                            printValue = aoResponse.output.print.toLowerCase() === 'true';
+                        } else {
+                            printValue = Boolean(aoResponse.output.print);
+                        }
+                    }
+                    
+                    outputObj = {
+                        data: aoResponse.output.data || "",
+                        print: printValue
+                    };
+                } else if (typeof aoResponse.Output === 'object') {
+                    // Already in Unity format
+                    outputObj = aoResponse.Output;
+                } else {
+                    // Fallback: create object from string
+                    outputObj = {
+                        data: aoResponse.output || aoResponse.Output || "",
+                        print: true
+                    };
+                }
+                
                 const response = {
-                    Messages: resultData.Messages || [],
-                    Spawns: resultData.Spawns || [],
-                    Output: resultData.Output || "",
-                    Error: resultData.Error || null,
+                    Messages: convertedMessages,
+                    Spawns: aoResponse.Spawns || [],
+                    Output: outputObj,
+                    Assignments: aoResponse.Assignments || [],
+                    Slot: aoResponse.slot || aoResponse.Slot,
+                    Process: aoResponse.process || aoResponse.Process,
+                    Error: aoResponse.Error || null,
                     uniqueID: options.uniqueID
                 };
 
@@ -357,6 +378,7 @@ function formatOutput(result, options) {
                 
             } catch (bodyError) {
                 logVerbose(options, '⚠️ Response parsing failed:', bodyError.message);
+                logVerbose(options, '⚠️ Raw result:', JSON.stringify(result, null, 2));
                 // Handle case where parsing fails
                 const fallbackResponse = {
                     Messages: [],

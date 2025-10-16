@@ -137,7 +137,7 @@ namespace Permaverse.AO
                     try
                     {
                         // Send the request using the inherited method
-                        (bool success, string result) = await SendDynamicRequestAsync(request.pid, request.methodName, request.tags, true, request.moduleId, request.serialize, callback:null, request.cancellationToken);
+                        (bool success, string result) = await SendDynamicRequestAsync(request.pid, request.methodName, request.tags, true, request.moduleId, request.serialize, callback:null, cancellationToken:request.cancellationToken);
 
                         // Invoke callback
                         request.callback?.Invoke(success, result);

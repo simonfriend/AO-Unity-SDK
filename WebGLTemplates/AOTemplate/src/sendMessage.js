@@ -97,11 +97,14 @@ export async function sendMessageHyperBeam(pid, data, tagsStr, id, objectCallbac
         });
 
         // Convert tags array to properties object for HyperBEAM request
+        // Using aoconnect 0.0.90 path format
         let requestParams = {
-            path: `/${pid}~process@1.0/push/serialize~json@1.0`,
+            path: `/${pid}~process@1.0/push`,
             method: "POST",
             target: pid,
             signingFormat: "ANS-104",
+            "accept-bundle": "true",
+            "require-codec": "application/json",
         };
 
         // Add data if provided
@@ -126,37 +129,106 @@ export async function sendMessageHyperBeam(pid, data, tagsStr, id, objectCallbac
             throw new Error(`HyperBEAM request failed: ${requestError.message}`);
         }
 
-        // Extract body from HyperBEAM response: body.json.body
-        let resultData;
+        // Extract body from HyperBEAM response (aoconnect 0.0.90)
+        // Response structure: result.body contains a JSON string with outbox, output, slot
+        let aoResponse;
         try {
-            if (processResult && processResult.json && processResult.json.body) {
-                resultData = processResult.json.body;
-            } else if (processResult) {
-                // Fallback to full result if body structure is different
-                resultData = processResult;
+            if (processResult && processResult.body) {
+                // Parse the body string to get the actual AO response
+                if (typeof processResult.body === 'string') {
+                    aoResponse = JSON.parse(processResult.body);
+                    console.log("Parsed HyperBEAM response:", aoResponse);
+                } else {
+                    // Already parsed
+                    aoResponse = processResult.body;
+                }
             } else {
-                throw new Error("Empty response from HyperBEAM");
+                throw new Error("No body in HyperBEAM response");
             }
 
+            // Convert HyperBEAM response format to Unity format
+            // HyperBEAM gives us: { outbox: [...], output: {data, print}, slot: N, ... }
+            // Unity NodeCU expects: { Messages: [...], Output: {data, print}, Spawns: [], ... }
+            
+            // Convert HyperBEAM outbox messages to Unity Message format
+            const convertedMessages = (aoResponse.outbox || aoResponse.Messages || []).map(msg => {
+                // Special fields that shouldn't be tags
+                const specialFields = ['Data', 'data', 'Target', 'target', 'Anchor', 'anchor', 'Id', 'id'];
+                
+                const unityMessage = {
+                    tags: []
+                };
+                
+                // Convert all properties to tags except special fields
+                for (const [key, value] of Object.entries(msg)) {
+                    if (specialFields.includes(key)) {
+                        // Map special fields to their Unity lowercase equivalents
+                        const lowerKey = key.toLowerCase();
+                        unityMessage[lowerKey] = value;
+                    } else {
+                        // Everything else becomes a tag
+                        unityMessage.tags.push({
+                            name: key,
+                            value: String(value)
+                        });
+                    }
+                }
+                
+                return unityMessage;
+            });
+            
+            // Handle Output field - NodeCU expects an object with 'data' and 'print' fields
+            let outputObj;
+            if (aoResponse.output && typeof aoResponse.output === 'object') {
+                // HyperBEAM format: output is already an object
+                // Parse 'print' field - can be string "true"/"false" or boolean
+                let printValue = true;
+                if (aoResponse.output.print !== undefined) {
+                    if (typeof aoResponse.output.print === 'string') {
+                        printValue = aoResponse.output.print.toLowerCase() === 'true';
+                    } else {
+                        printValue = Boolean(aoResponse.output.print);
+                    }
+                }
+                
+                outputObj = {
+                    data: aoResponse.output.data || "",
+                    print: printValue
+                };
+            } else if (typeof aoResponse.Output === 'object') {
+                // Already in Unity format
+                outputObj = aoResponse.Output;
+            } else {
+                // Fallback: create object from string
+                outputObj = {
+                    data: aoResponse.output || aoResponse.Output || "",
+                    print: true
+                };
+            }
+            
             const response = {
-                Messages: resultData.Messages || [],
-                Spawns: resultData.Spawns || [],
-                Output: resultData.Output || "",
-                Error: resultData.Error || null,
+                Messages: convertedMessages,
+                Spawns: aoResponse.Spawns || [],
+                Output: outputObj,
+                Assignments: aoResponse.Assignments || [],
+                Slot: aoResponse.slot || aoResponse.Slot,
+                Process: aoResponse.process || aoResponse.Process,
+                Error: aoResponse.Error || null,
                 uniqueID: id,
             };
 
             json = JSON.stringify(response);
 
         } catch (bodyError) {
-            // Handle case where body.json.body is null or malformed
+            // Handle case where parsing fails
             console.warn("Failed to parse HyperBEAM response body:", bodyError.message);
+            console.warn("Raw result:", processResult);
             
             const fallbackResponse = {
                 Messages: [],
                 Spawns: [],
-                Output: processResult ? JSON.stringify(processResult) : "",
-                Error: `Body parsing failed: ${bodyError.message}`,
+                Output: { data: processResult ? JSON.stringify(processResult) : "", print: true },
+                Error: `Response parsing failed: ${bodyError.message}`,
                 uniqueID: id,
             };
             
@@ -164,19 +236,19 @@ export async function sendMessageHyperBeam(pid, data, tagsStr, id, objectCallbac
         }
 
     } catch (error) {
-        //console.error("Error in sendMessageHyperBeam:", error.message);
+        console.error("Error in sendMessageHyperBeam:", error.message);
 
         const errorResponse = {
             Messages: [],
             Spawns: [],
-            Output: "",
+            Output: { data: "", print: false },
             Error: error.message,
             uniqueID: id,
         };
         json = JSON.stringify(errorResponse);
     }
 
-    //console.log("Sending HyperBEAM Message to", objectCallback, "in", methodCallback);
+    console.log("Sending HyperBEAM Message to", objectCallback, "in", methodCallback);
     // Always send a message back to the Unity instance regardless of success or failure
     myUnityInstance.SendMessage(objectCallback, methodCallback, json);
 

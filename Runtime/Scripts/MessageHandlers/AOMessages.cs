@@ -267,11 +267,34 @@ namespace Permaverse.AO
 		public string Data { get; set; }
 		public string Anchor { get; set; }
 		public string Target { get; set; }
+		public string Id { get; set; }
 
 		public string GetTagValue(string tagName)
 		{
+			// Handle null or empty input
+			if (string.IsNullOrEmpty(tagName)) return null;
+			
+			// First try exact match
 			Tag tag = Tags.Find(t => t.Name == tagName);
-			return tag != null ? tag.Value : null;
+			if (tag != null) return tag.Value;
+			
+			// Try with first letter capitalized and rest lowercase
+			string capitalizedName = char.ToUpper(tagName[0]) + tagName.Substring(1).ToLower();
+			if (capitalizedName != tagName)
+			{
+				tag = Tags.Find(t => t.Name == capitalizedName);
+				if (tag != null) return tag.Value;
+			}
+			
+			// Try all lowercase
+			string lowerName = tagName.ToLower();
+			if (lowerName != tagName && lowerName != capitalizedName)
+			{
+				tag = Tags.Find(t => t.Name == lowerName);
+				if (tag != null) return tag.Value;
+			}
+			
+			return null;
 		}
 
 		public Message(JSONNode messageNode)
@@ -288,13 +311,13 @@ namespace Permaverse.AO
 			Data = messageNode.HasKey("data") ? messageNode["data"] : messageNode.HasKey("Data") ? messageNode["Data"] : null;
 			Anchor = messageNode.HasKey("anchor") ? messageNode["anchor"] : messageNode.HasKey("Anchor") ? messageNode["Anchor"] : null;
 			Target = messageNode.HasKey("target") ? messageNode["target"] : messageNode.HasKey("Target") ? messageNode["Target"] : null;
+			Id = messageNode.HasKey("id") ? messageNode["id"] : messageNode.HasKey("Id") ? messageNode["Id"] : null;
 		}
 	}
 
 	[Serializable]
 	public class MessageSU : Message
 	{
-		public string Id { get; set; }
 		public Owner Owner { get; set; }
 		public string Signature { get; set; }
 
