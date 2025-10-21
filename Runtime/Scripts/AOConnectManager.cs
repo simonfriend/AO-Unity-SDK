@@ -615,8 +615,16 @@ namespace Permaverse.AO
 
 			if (!string.IsNullOrEmpty(errorMessage))
 			{
+				// Properly escape error message for JSON
+				string escapedError = errorMessage
+					.Replace("\\", "\\\\")  // Backslash first!
+					.Replace("\"", "\\\"")  // Quotes
+					.Replace("\n", "\\n")   // Newlines
+					.Replace("\r", "\\r")   // Carriage returns
+					.Replace("\t", "\\t");  // Tabs
+				
 				// Create error response in the same format as JavaScript functions
-				json = $"{{\"Messages\":[],\"Spawns\":[],\"Output\":\"\",\"Error\":\"{errorMessage.Replace("\"", "\\\"")}\",\"uniqueID\":\"{id}\"}}";
+				json = $"{{\"Messages\":[],\"Spawns\":[],\"Output\":\"\",\"Error\":\"{escapedError}\",\"uniqueID\":\"{id}\"}}";
 			}
 			else if (!string.IsNullOrEmpty(output))
 			{

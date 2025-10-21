@@ -488,12 +488,38 @@ namespace Permaverse.AO
 				Debug.Log($"[{gameObject.name}] Result: {jsonResult}");
 			}
 
-			var result = JSON.Parse(jsonResult);
-			string uniqueID = result["uniqueID"];
-
-			if (results.ContainsKey(uniqueID))
+			// Check for null or empty result
+			if (string.IsNullOrEmpty(jsonResult))
 			{
-				results[uniqueID] = (true, jsonResult, results[uniqueID].Item3);
+				Debug.LogError($"[{gameObject.name}] MessageCallback received null or empty result");
+				return;
+			}
+
+			try
+			{
+				var result = JSON.Parse(jsonResult);
+				
+				// Check if uniqueID exists
+				if (result["uniqueID"] == null)
+				{
+					Debug.LogError($"[{gameObject.name}] MessageCallback received result without uniqueID: {jsonResult}");
+					return;
+				}
+				
+				string uniqueID = result["uniqueID"];
+
+				if (results.ContainsKey(uniqueID))
+				{
+					results[uniqueID] = (true, jsonResult, results[uniqueID].Item3);
+				}
+				else
+				{
+					Debug.LogWarning($"[{gameObject.name}] MessageCallback received result for unknown uniqueID: {uniqueID}");
+				}
+			}
+			catch (System.Exception ex)
+			{
+				Debug.LogError($"[{gameObject.name}] MessageCallback error parsing result: {ex.Message}\nResult: {jsonResult}");
 			}
 		}
 
