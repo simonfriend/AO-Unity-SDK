@@ -15,6 +15,7 @@ const path = require('path');
 // Configuration
 const DEFAULT_PROCESS_ID = "c9pY_6qwccWuUXklVMURri56cYjYUpKS0B_wSegjDkk"; // Your StarGrid process ID
 const DEFAULT_HYPERBEAM_URL = "https://forward.computer";
+const DEFAULT_SCHEDULER = "n_XZJhUnmldNFo4dhajoPZWhBXuJk-OcQr5JQ49c4Zo";
 const DEFAULT_WALLET_PATH = path.join(__dirname, '..', 'wallet.json');
 
 // Logging helper functions
@@ -221,6 +222,7 @@ async function sendHyperBeamMessage(options) {
     const { request } = connect({
         MODE: "mainnet",
         URL: options.hyperBeamUrl,
+        SCHEDULER: DEFAULT_SCHEDULER,
         signer: createSigner(wallet),
     });
 
