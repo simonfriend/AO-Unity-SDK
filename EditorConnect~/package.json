@@ -2,6 +2,7 @@
   "name": "aoconnect-editor",
   "version": "1.0.0",
   "description": "AOConnect testing tool for Unity Editor",
+  "type": "module",
   "main": "aoconnect-editor.js",
   "scripts": {
     "test": "node aoconnect-editor.js --help",

@@ -1,6 +1,5 @@
 using SimpleJSON;
 using System;
-using System.Collections;
 using System.Collections.Generic;
 using System.Globalization;
 using System.Runtime.InteropServices;
@@ -10,7 +9,6 @@ using Cysharp.Threading.Tasks;
 using TMPro;
 using UnityEngine;
 using UnityEngine.UI;
-using System.ComponentModel;
 
 namespace Permaverse.AO
 {
@@ -768,17 +766,49 @@ namespace Permaverse.AO
 				// Execute Node.js script asynchronously using NodeJsUtils
 				string output = await NodeJsUtils.ExecuteNodeScriptAsync(arguments.Select(arg => $"\"{arg}\"").ToArray());
 
-				Debug.Log($"[AOConnectManager] Node.js script completed successfully. Output: {output}");
-
+				// Log output length for debugging large responses
+				if(showLogs) Debug.Log($"[AOConnectManager] Node.js script completed. Output: {output}");
+				
 				// Parse response - Node.js script should return the same format as JavaScript sendMessageHyperBeam
 				// Expected format: { "Messages": [], "Spawns": [], "Output": "", "Error": null, "uniqueID": "..." }
-				var response = JSON.Parse(output);
+				JSONNode response = null;
+				try
+				{
+					response = JSON.Parse(output);
+				}
+				catch (Exception parseEx)
+				{
+					string errorMsg = $"Failed to parse Node.js output (length: {output.Length}): {parseEx.Message}";
+					Debug.LogError($"[AOConnectManager] {errorMsg}");
+
+					if(Application.isEditor)
+                    {
+						// Save full output to file since Unity logs truncate long lines
+						try
+						{
+							string tempDir = Application.temporaryCachePath;
+							string timestamp = DateTime.Now.ToString("yyyyMMdd_HHmmss");
+							string filePath = System.IO.Path.Combine(tempDir, $"hyperbeam_error_{timestamp}_{id}.txt");
+							System.IO.File.WriteAllText(filePath, output);
+							Debug.LogError($"[AOConnectManager] Full output saved to: {filePath}");
+						}
+						catch (Exception fileEx)
+						{
+							Debug.LogError($"[AOConnectManager] Could not save output to file: {fileEx.Message}");
+						}         
+                    }
+					
+					InvokeCallback(objectCallback, methodCallback, id, errorMsg);
+					return;
+				}
+
+				if(showLogs) Debug.Log($"[AOConnectManager] Successfully parsed response");
 
 				// Call the callback with the successful response
 				InvokeCallback(objectCallback, methodCallback, id, null, output);
 
 				// Log any errors from the response
-				if (response.HasKey("Error") && !response["Error"].IsNull && !string.IsNullOrEmpty(response["Error"]))
+				if (response != null && response.HasKey("Error") && !response["Error"].IsNull && !string.IsNullOrEmpty(response["Error"]))
 				{
 					Debug.LogWarning($"[AOConnectManager] HyperBEAM response contains error: {response["Error"]}");
 				}

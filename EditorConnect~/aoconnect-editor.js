@@ -8,14 +8,19 @@
  * Usage: node aoconnect-editor.js [options]
  */
 
-const { connect, createSigner, message, createDataItemSigner, result } = require('@permaweb/aoconnect');
-const fs = require('fs');
-const path = require('path');
+import { connect, createSigner, message, createDataItemSigner, result } from '@permaweb/aoconnect';
+import fs from 'fs';
+import path from 'path';
+import { fileURLToPath } from 'url';
+
+// Get __dirname equivalent in ES modules
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
 // Configuration
 const DEFAULT_PROCESS_ID = "c9pY_6qwccWuUXklVMURri56cYjYUpKS0B_wSegjDkk"; // Your StarGrid process ID
-const DEFAULT_HYPERBEAM_URL = "https://forward.computer";
-const DEFAULT_SCHEDULER = "n_XZJhUnmldNFo4dhajoPZWhBXuJk-OcQr5JQ49c4Zo";
+const DEFAULT_HYPERBEAM_URL = 'https://push.forward.computer';
+const DEFAULT_SCHEDULER = 'n_XZJhUnmldNFo4dhajoPZWhBXuJk-OcQr5JQ49c4Zo';
 const DEFAULT_WALLET_PATH = path.join(__dirname, '..', 'wallet.json');
 
 // Logging helper functions
@@ -41,7 +46,7 @@ function parseArgs() {
     const args = process.argv.slice(2);
     const options = {
         processId: DEFAULT_PROCESS_ID,
-        hyperBeamUrl: DEFAULT_HYPERBEAM_URL,
+        hyperBeamUrl: DEFAULT_HYPERBEAM_URL, // Use default, can be overridden via CLI
         walletPath: DEFAULT_WALLET_PATH,
         data: "",
         tags: {},
@@ -218,45 +223,62 @@ async function sendHyperBeamMessage(options) {
     logVerbose(options, '   Wallet:', wallet ? 'Loaded' : 'Not loaded');
     logVerbose(options, '');
 
-    // Create HyperBEAM connection
-    const { request } = connect({
+    // Create HyperBEAM connection - always set URL and SCHEDULER explicitly
+    const config = {
         MODE: "mainnet",
         URL: options.hyperBeamUrl,
         SCHEDULER: DEFAULT_SCHEDULER,
         signer: createSigner(wallet),
-    });
+    };
+    
+    const ao = connect(config);
 
     try {
-        // Build request parameters
-        const requestParams = {
-            path: `/${options.processId}~process@1.0/push`,
-            method: "POST",
-            target: options.processId,
-            signingFormat: "ANS-104",
-            "accept-bundle": "true",
-            "require-codec": "application/json",
-        };
+        // Build tags array for message
+        const tags = Object.entries(options.tags).map(([name, value]) => ({
+            name,
+            value
+        }));
 
-        // Add data if provided
-        if (options.data) {
-            requestParams.data = options.data;
+        logVerbose(options, '📤 Sending message with tags:', tags);
+        logVerbose(options, '');
+
+        // Send message via HyperBEAM with error interception
+        let messageId;
+        try {
+            messageId = await ao.message({
+                process: options.processId,
+                tags: tags,
+                data: options.data || ''
+            });
+        } catch (messageError) {
+            // Try to extract more details from the error
+            console.error('❌ Raw error from aoconnect:', messageError);
+            console.error('❌ Error stack:', messageError.stack);
+            throw messageError;
         }
 
-        // Add tags as properties
-        Object.assign(requestParams, options.tags);
+        logBasic(options, '✅ Message sent! Message ID:', messageId);
+        logVerbose(options, '');
+        
+        // Get the result
+        logVerbose(options, '⏳ Fetching result...');
+        const messageResult = await ao.result({
+            process: options.processId,
+            message: messageId
+        });
 
-        logVerbose(options, '📤 Sending request with parameters:', requestParams);
+        logBasic(options, '✅ Result received!');
         logVerbose(options, '');
 
-        // Send request via HyperBEAM
-        const result = await request(requestParams);
-
-        logBasic(options, '✅ HyperBEAM message sent successfully!');
-        logVerbose(options, '');
-
-        return result;
+        return messageResult;
 
     } catch (error) {
+        // Always log error details in verbose mode, even with unity output
+        logVerbose(options, '❌ Error in sendHyperBeamMessage:', error.message);
+        logVerbose(options, '💡 Full error:', error);
+        logVerbose(options, '💡 Stack trace:', error.stack);
+        
         if (options.output === 'unity') {
             // Unity-friendly error format - same as JavaScript sendMessageHyperBeam
             const errorResponse = {
@@ -282,65 +304,96 @@ function formatOutput(result, options) {
             // Unity-friendly JSON format - same as JavaScript sendMessage functions
             try {
                 let aoResponse;
+                aoResponse = result; // Same for legacy and hyperbeam since we are not using hyper aos
                 
-                if (options.mode === 'legacy') {
-                    // For legacy mode, the result should already be in the right format
-                    aoResponse = result;
-                } else {
-                    // For HyperBEAM mode with aoconnect 0.0.90
-                    // Response structure: result.body contains a JSON string with outbox, output, etc.
-                    if (result && result.body) {
-                        // Parse the body string to get the actual AO response
-                        if (typeof result.body === 'string') {
-                            aoResponse = JSON.parse(result.body);
-                            logVerbose(options, '🔍 Parsed HyperBEAM response:', JSON.stringify(aoResponse, null, 2));
-                        } else {
-                            // Already parsed
-                            aoResponse = result.body;
-                        }
-                    } else {
-                        throw new Error("No body in HyperBEAM response");
-                    }
-                }
+                // if (options.mode === 'legacy') {
+                //     // For legacy mode, the result should already be in the right format
+                //     aoResponse = result;
+                // } else {
+                //     // For HyperBEAM mode with aoconnect 0.0.90
+                //     // Response structure: result.body contains a JSON string with outbox, output, etc.
+                //     if (result && result.body) {
+                //         // Parse the body string to get the actual AO response
+                //         if (typeof result.body === 'string') {
+                //             aoResponse = JSON.parse(result.body);
+                //             logVerbose(options, '🔍 Parsed HyperBEAM response:', JSON.stringify(aoResponse, null, 2));
+                //         } else {
+                //             // Already parsed
+                //             aoResponse = result.body;
+                //         }
+                //     } else {
+                //         throw new Error("No body in HyperBEAM response");
+                //     }
+                // }
 
                 // Convert HyperBEAM response format to Unity format
-                // HyperBEAM gives us: { outbox: [...], output: {data, print}, slot: N, ... }
-                // Unity NodeCU expects: { Messages: [...], Output: {data, print}, Spawns: [], ... }
+                // aoconnect 0.0.93 gives us: { Messages: [...], Output: {data, print}, Spawns: [], ... }
+                // Messages already have Tags array format from ao.result()
                 
-                // Convert HyperBEAM outbox messages to Unity Message format
-                // HyperBEAM: {Action: "X", Data: "Y", Target: "Z", ...}
-                // Unity: {tags: [{name: "Action", value: "X"}], data: "Y", target: "Z"}
-                const convertedMessages = (aoResponse.outbox || aoResponse.Messages || []).map(msg => {
-                    // Special fields that shouldn't be tags
-                    const specialFields = ['Data', 'data', 'Target', 'target', 'Anchor', 'anchor', 'Id', 'id'];
-                    
-                    const unityMessage = {
-                        tags: []
-                    };
-                    
-                    // Convert all properties to tags except special fields
-                    for (const [key, value] of Object.entries(msg)) {
-                        if (specialFields.includes(key)) {
-                            // Map special fields to their Unity lowercase equivalents
-                            const lowerKey = key.toLowerCase();
-                            unityMessage[lowerKey] = value;
-                        } else {
-                            // Everything else becomes a tag
-                            unityMessage.tags.push({
-                                name: key,
-                                value: String(value)
-                            });
+                // Convert Messages to Unity format if needed
+                const convertedMessages = (aoResponse.Messages || []).map(msg => {
+                    // Check if message already has Tags array (new format from ao.result)
+                    if (msg.Tags && Array.isArray(msg.Tags)) {
+                        // Strip commitment metadata from tags to reduce response size
+                        // Commitments can add 10KB+ of cryptographic signatures that Unity doesn't need
+                        const cleanTags = msg.Tags.map(tag => ({
+                            name: tag.name,
+                            value: tag.value
+                            // Omit 'commitments' object
+                        }));
+                        
+                        // Convert Tags to lowercase 'tags' and extract special fields
+                        const unityMessage = {
+                            tags: cleanTags,
+                            data: msg.Data || "",
+                            target: msg.Target || "",
+                            anchor: msg.Anchor || ""
+                        };
+                        return unityMessage;
+                    } else {
+                        // Old format - convert properties to tags
+                        const specialFields = ['Data', 'data', 'Target', 'target', 'Anchor', 'anchor', 'Id', 'id'];
+                        
+                        const unityMessage = {
+                            tags: []
+                        };
+                        
+                        for (const [key, value] of Object.entries(msg)) {
+                            if (specialFields.includes(key)) {
+                                const lowerKey = key.toLowerCase();
+                                unityMessage[lowerKey] = value;
+                            } else {
+                                unityMessage.tags.push({
+                                    name: key,
+                                    value: String(value)
+                                });
+                            }
                         }
+                        
+                        return unityMessage;
                     }
-                    
-                    return unityMessage;
                 });
                 
                 // Handle Output field - NodeCU expects an object with 'data' and 'print' fields
                 let outputObj;
-                if (aoResponse.output && typeof aoResponse.output === 'object') {
-                    // HyperBEAM format: output is already an object
+                if (aoResponse.Output && typeof aoResponse.Output === 'object') {
+                    // New format from ao.result() - Output is already an object
                     // Parse 'print' field - can be string "true"/"false" or boolean
+                    let printValue = true;
+                    if (aoResponse.Output.print !== undefined) {
+                        if (typeof aoResponse.Output.print === 'string') {
+                            printValue = aoResponse.Output.print.toLowerCase() === 'true';
+                        } else {
+                            printValue = Boolean(aoResponse.Output.print);
+                        }
+                    }
+                    
+                    outputObj = {
+                        data: aoResponse.Output.data || "",
+                        print: printValue
+                    };
+                } else if (aoResponse.output && typeof aoResponse.output === 'object') {
+                    // Old lowercase format
                     let printValue = true;
                     if (aoResponse.output.print !== undefined) {
                         if (typeof aoResponse.output.print === 'string') {
@@ -354,13 +407,10 @@ function formatOutput(result, options) {
                         data: aoResponse.output.data || "",
                         print: printValue
                     };
-                } else if (typeof aoResponse.Output === 'object') {
-                    // Already in Unity format
-                    outputObj = aoResponse.Output;
                 } else {
                     // Fallback: create object from string
                     outputObj = {
-                        data: aoResponse.output || aoResponse.Output || "",
+                        data: aoResponse.Output || aoResponse.output || "",
                         print: true
                     };
                 }
@@ -498,6 +548,7 @@ async function main() {
         
         const output = formatOutput(result, options);
         console.log(output);
+        process.exit(0);
         
     } catch (error) {
         if (options.output === 'unity') {

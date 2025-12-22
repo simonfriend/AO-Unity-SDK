@@ -29,8 +29,10 @@ namespace Permaverse.AO
 		public List<int> resendDelays = new List<int> { 1, 5, 10, 30 };
 
 		protected float defaultDelay = 5f;
-
 		protected bool showLogs => AOConnectManager.main.showLogs;
+
+		[Tooltip("HTTP error codes to treat as success and return body")]
+		public List<long> ignoreHttpErrors = new List<long> { };
 
 		// Shared cancellation token source for ForceStopAndReset functionality
 		protected CancellationTokenSource sharedCancellationTokenSource;
@@ -95,9 +97,10 @@ namespace Permaverse.AO
 		/// <param name="url">URL to request</param>
 		/// <param name="callback">Optional callback for final result only</param>
 		/// <param name="serialize">Whether to serialize response</param>
+		/// <param name="customIgnoreHttpErrors">Optional list of HTTP error codes to ignore (uses default if null)</param>
 		/// <param name="cancellationToken">Cancellation token (uses shared token if not provided)</param>
 		/// <returns>Tuple with success status and result</returns>
-		public virtual async UniTask<(bool success, string result)> SendPathAsync(string url, bool serialize = true, Action<bool, string> callback = null, CancellationToken cancellationToken = default)
+		public virtual async UniTask<(bool success, string result)> SendPathAsync(string url, bool serialize = true, Action<bool, string> callback = null, List<long> customIgnoreHttpErrors = null, CancellationToken cancellationToken = default)
 		{
 			// Use shared cancellation token if none provided
 			if (cancellationToken == default)
@@ -105,11 +108,14 @@ namespace Permaverse.AO
 				cancellationToken = GetSharedCancellationToken();
 			}
 
+			// Use custom ignore list if provided, otherwise use default from inspector
+			List<long> errorsToIgnore = customIgnoreHttpErrors ?? ignoreHttpErrors;
+
 			for (int attempt = 0; attempt <= maxRetries; attempt++)
 			{
 				try
 				{
-					(bool success, string result) = await SendPathOnceAsync(url, serialize, cancellationToken);
+					(bool success, string result) = await SendPathOnceAsync(url, serialize, errorsToIgnore, cancellationToken);
 
 					// If successful, call callback and return immediately
 					if (success)
@@ -162,7 +168,7 @@ namespace Permaverse.AO
 		/// <summary>
 		/// Send a single HyperBeam path request attempt without retry logic
 		/// </summary>
-		private async UniTask<(bool success, string result)> SendPathOnceAsync(string url, bool serialize = true, CancellationToken cancellationToken = default)
+		private async UniTask<(bool success, string result)> SendPathOnceAsync(string url, bool serialize = true, List<long> errorsToIgnore = null, CancellationToken cancellationToken = default)
 		{
 			if (showLogs) Debug.Log($"[{gameObject.name}] Sending HyperBEAM path request to: {url}");
 
@@ -192,6 +198,15 @@ namespace Permaverse.AO
 			}
 			else
 			{
+				// Check if this HTTP error code should be ignored (e.g., 404 for slot polling)
+				if (errorsToIgnore != null && errorsToIgnore.Contains(request.responseCode))
+				{
+					// Treat as success and return the response body (may contain useful JSON like {"status":404, "reason":...})
+					string responseData = ParseHyperBeamResponse(request.downloadHandler.text, serialize);
+					if (showLogs) Debug.Log($"[{gameObject.name}] HyperBEAM path HTTP {request.responseCode} (ignored, returning body): {responseData}");
+					return (true, responseData);
+				}
+
 				if (showLogs) Debug.LogError($"[{gameObject.name}] HyperBEAM path Error: {request.error}");
 				return (false, null);
 			}
@@ -328,20 +343,20 @@ namespace Permaverse.AO
 		/// Send static HyperBEAM request for cached content
 		/// </summary>
 		/// <param name="slot">Optional slot number for compute results. If set and now=false, uses "compute={slot}" instead of "compute"</param>
-		public async UniTask<(bool success, string result)> SendStaticRequestAsync(string pid, string path, bool now = true, bool addCachePath = true, bool serialize = true, long? slot = null, Action<bool, string> callback = null, CancellationToken cancellationToken = default)
+		public async UniTask<(bool success, string result)> SendStaticRequestAsync(string pid, string path, bool now = true, bool addCachePath = true, bool serialize = true, long? slot = null, Action<bool, string> callback = null, List<long> customIgnoreHttpErrors = null, CancellationToken cancellationToken = default)
 		{
 			string fullPath = BuildStaticPath(pid, path, now, addCachePath, serialize, slot);
-			return await SendPathAsync(fullPath, serialize: serialize, callback: callback, cancellationToken: cancellationToken);
+			return await SendPathAsync(fullPath, serialize: serialize, callback: callback, customIgnoreHttpErrors: customIgnoreHttpErrors, cancellationToken: cancellationToken);
 		}
 
 		/// <summary>
 		/// Send dynamic HyperBEAM request with method and parameters
 		/// </summary>
 		/// <param name="slot">Optional slot number for compute results. If set and now=false, uses "compute={slot}" instead of "compute"</param>
-		public async UniTask<(bool success, string result)> SendDynamicRequestAsync(string pid, string methodName, List<Tag> parameters, bool now = true, string moduleId = null, bool serialize = true, long? slot = null, Action<bool, string> callback = null, CancellationToken cancellationToken = default)
+		public async UniTask<(bool success, string result)> SendDynamicRequestAsync(string pid, string methodName, List<Tag> parameters, bool now = true, string moduleId = null, bool serialize = true, long? slot = null, Action<bool, string> callback = null, List<long> customIgnoreHttpErrors = null, CancellationToken cancellationToken = default)
 		{
 			string fullPath = BuildDynamicPath(pid, methodName, parameters, now, moduleId, serialize, slot);
-			var (success, result) = await SendPathAsync(fullPath, serialize: serialize, callback: callback, cancellationToken: cancellationToken);
+			var (success, result) = await SendPathAsync(fullPath, serialize: serialize, callback: callback, customIgnoreHttpErrors: customIgnoreHttpErrors, cancellationToken: cancellationToken);
 			return (success, result);
 		}
 
@@ -453,7 +468,7 @@ namespace Permaverse.AO
 			/// </summary>
 			public async UniTask<(bool success, string result)> ExecuteAsync(Action<bool, string> callback = null, CancellationToken cancellationToken = default)
 			{
-				return await handler.SendDynamicRequestAsync(pid, methodName, parameters, now, moduleId, serialize, slot, callback, cancellationToken);
+				return await handler.SendDynamicRequestAsync(pid, methodName, parameters, now, moduleId, serialize, slot, callback, customIgnoreHttpErrors: null, cancellationToken);
 			}
 		}
 

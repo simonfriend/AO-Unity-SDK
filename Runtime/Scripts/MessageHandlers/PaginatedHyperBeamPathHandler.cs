@@ -131,7 +131,7 @@ namespace Permaverse.AO
 			}
 			else
 			{
-				var (success, result) = await SendDynamicRequestAsync(pid, methodName, completeTags, true, moduleId, true);
+				var (success, result) = await SendDynamicRequestAsync(pid, methodName, completeTags, true, moduleId, true, callback:null, customIgnoreHttpErrors:null);
 				paginationCallback(success, result);
 			}
 		}
