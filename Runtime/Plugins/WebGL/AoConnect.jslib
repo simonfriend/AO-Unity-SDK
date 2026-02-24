@@ -36,17 +36,15 @@ mergeInto(LibraryManager.library, {
         UnityAO.sendMessageHyperBeam(pid, data, tags, id, object, method, useMainWallet, chain, hyperBeamUrl);
     },
 
-    SendDryrunJS: function (pidPtr, dataPtr, tagsPtr, idPtr, objectPtr, methodPtr, useMainWalletPtr, chainPtr) {
+    SendDryrunJS: function (pidPtr, dataPtr, tagsPtr, idPtr, objectPtr, methodPtr) {
         var pid = UTF8ToString(pidPtr);
         var data = UTF8ToString(dataPtr);
         var tags = UTF8ToString(tagsPtr);
         var id = UTF8ToString(idPtr);
         var object = UTF8ToString(objectPtr);
         var method = UTF8ToString(methodPtr);
-        var useMainWallet = UTF8ToString(useMainWalletPtr);
-        var chain = UTF8ToString(chainPtr);
 
-        UnityAO.sendDryrun(pid, data, tags, id, object, method, useMainWallet, chain);
+        UnityAO.sendDryrun(pid, data, tags, id, object, method);
     },
 
     TransferTokenJS: function (pidPtr, quantityPtr, recipientPtr) {

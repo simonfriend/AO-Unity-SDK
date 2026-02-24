@@ -225,7 +225,7 @@ namespace Permaverse.AO
 		{
 			if (method == NetworkMethod.Dryrun)
 			{
-				return await SendDryrunRequestAsync(pid, data, tags, useMainWallet, walletType, cancellationToken);
+				return await SendDryrunRequestAsync(pid, data, tags, cancellationToken);
 			}
 			else if (method == NetworkMethod.HyperBeamMessage)
 			{
@@ -383,7 +383,7 @@ namespace Permaverse.AO
 		/// Send dryrun request using aoconnect - single attempt without retry logic
 		/// Dryrun is a read-only simulation and doesn't require wallet signing
 		/// </summary>
-		protected virtual async UniTask<(bool success, NodeCU result)> SendDryrunRequestAsync(string pid, string data, List<Tag> tags, bool useMainWallet = false, WalletType walletType = WalletType.Default, CancellationToken cancellationToken = default)
+		protected virtual async UniTask<(bool success, NodeCU result)> SendDryrunRequestAsync(string pid, string data, List<Tag> tags, CancellationToken cancellationToken = default)
 		{
 			// Dryrun doesn't need wallet - it's a read-only simulation
 			if (data == null)
@@ -414,7 +414,7 @@ namespace Permaverse.AO
 
 		string tagsStr = tagsJsonArray.ToString();
 
-		AOConnectManager.main.SendDryrun(pid, data, tagsStr, uniqueID, gameObject.name, "MessageCallback", useMainWallet, walletType);
+		AOConnectManager.main.SendDryrun(pid, data, tagsStr, uniqueID, gameObject.name, "MessageCallback");
 
 		// Wait for result
 		await UniTask.WaitUntil(() => results[uniqueID].Item1, cancellationToken: cancellationToken);

@@ -52,33 +52,19 @@ export async function sendMessageCustomCallback(pid, data, tagsStr, id, objectCa
     return json;
 }
 
-export async function sendDryrun(pid, data, tagsStr, id, objectCallback, methodCallback, useMainWallet, chain) {
+export async function sendDryrun(pid, data, tagsStr, id, objectCallback, methodCallback) {
     var tags = JSON.parse(tagsStr);
     let json;
 
     try {
-        if (chain == 'default') {
-            chain = null;
-        }
-
-        // Select the appropriate signer function
-        let signerFunction;
-        let chainToUse = chain || getConnectedChain();
-        if (useMainWallet == 'true' || chainToUse === 'arweave') {
-            signerFunction = createDataItemSignerMain(chainToUse);
-        } else {
-            signerFunction = createDataItemSignerSession(chainToUse);
-        }
-
-        // Use aoconnect dryrun - more optimized than HTTP request
+        // Use aoconnect dryrun - no wallet needed for read-only simulation
         const result = await dryrun({
             process: pid,
             data: data || '',
             tags: tags,
             anchor: Math.round(Date.now() / 1000)
                 .toString()
-                .padStart(32, Math.floor(Math.random() * 10).toString()),
-            Owner: await signerFunction.getAddress?.() || undefined  // Optional: add owner if available
+                .padStart(32, Math.floor(Math.random() * 10).toString())
         });
 
         result.uniqueID = id;

@@ -151,7 +151,7 @@ namespace Permaverse.AO
 		private static extern void SendMessageHyperBeamJS(string pid, string data, string tags, string id, string objectCallback, string methodCallback, string useMainWallet, string chain, string hyperBeamUrl);
 
 		[DllImport("__Internal")]
-		private static extern void SendDryrunJS(string pid, string data, string tags, string id, string objectCallback, string methodCallback, string useMainWallet, string chain);
+		private static extern void SendDryrunJS(string pid, string data, string tags, string id, string objectCallback, string methodCallback);
 
 		[DllImport("__Internal")]
 		private static extern void ConnectWalletJS();
@@ -526,15 +526,15 @@ namespace Permaverse.AO
 #endif
 		}
 
-		public void SendDryrun(string pid, string data, string tags, string id, string objectCallback = "AOConnectManager", string methodCallback = "MessageCallback", bool useMainWallet = false, WalletType typeToUse = WalletType.Default)
-		{
+public void SendDryrun(string pid, string data, string tags, string id, string objectCallback = "AOConnectManager", string methodCallback = "MessageCallback")
+	{
 		// Dryrun doesn't need wallet - it's a read-only simulation
 #if UNITY_EDITOR
 		// No wallet needed for dryrun in editor
 		SendMessageViaNodeScriptAsync(pid, data, tags, id, null, objectCallback, methodCallback, messageMode: "dryrun", this.GetCancellationTokenOnDestroy()).Forget();
 #else
-		// No wallet queue needed for dryrun - just call directly
-			SendDryrunJS(pid, data, tags, id, objectCallback, methodCallback, useMainWalletString, chain);
+		// No wallet needed for dryrun - just call directly
+		SendDryrunJS(pid, data, tags, id, objectCallback, methodCallback);
 #endif
 		}
 
