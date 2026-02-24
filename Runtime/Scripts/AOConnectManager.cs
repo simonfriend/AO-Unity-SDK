@@ -151,6 +151,9 @@ namespace Permaverse.AO
 		private static extern void SendMessageHyperBeamJS(string pid, string data, string tags, string id, string objectCallback, string methodCallback, string useMainWallet, string chain, string hyperBeamUrl);
 
 		[DllImport("__Internal")]
+		private static extern void SendDryrunJS(string pid, string data, string tags, string id, string objectCallback, string methodCallback, string useMainWallet, string chain);
+
+		[DllImport("__Internal")]
 		private static extern void ConnectWalletJS();
 
 		[DllImport("__Internal")]
@@ -455,7 +458,7 @@ namespace Permaverse.AO
 			if (!string.IsNullOrEmpty(editorWalletPath) && System.IO.File.Exists(editorWalletPath))
 			{
 				// Use async execution to avoid blocking the main thread
-				SendMessageViaNodeScriptAsync(pid, data, tags, id, null, objectCallback, methodCallback, isLegacyMode: true, this.GetCancellationTokenOnDestroy()).Forget();
+				SendMessageViaNodeScriptAsync(pid, data, tags, id, null, objectCallback, methodCallback, messageMode: "legacy", this.GetCancellationTokenOnDestroy()).Forget();
 				return;
 			}
 			else
@@ -493,7 +496,7 @@ namespace Permaverse.AO
 			if (!string.IsNullOrEmpty(editorWalletPath) && System.IO.File.Exists(editorWalletPath))
 			{
 				// Use async execution to avoid blocking the main thread
-				SendMessageViaNodeScriptAsync(pid, data, tags, id, hyperBeamUrl, objectCallback, methodCallback, isLegacyMode: false, this.GetCancellationTokenOnDestroy()).Forget();
+				SendMessageViaNodeScriptAsync(pid, data, tags, id, hyperBeamUrl, objectCallback, methodCallback, messageMode: "hyperbeam", this.GetCancellationTokenOnDestroy()).Forget();
 				return;
 			}
 			else
@@ -520,6 +523,18 @@ namespace Permaverse.AO
 			string useMainWalletString = useMainWallet ? "true" : "false";
 			string chain = typeToUse.ToString().ToLower();
 			SendMessageHyperBeamJS(pid, data, tags, id, objectCallback, methodCallback, useMainWalletString, chain, hyperBeamUrl);
+#endif
+		}
+
+		public void SendDryrun(string pid, string data, string tags, string id, string objectCallback = "AOConnectManager", string methodCallback = "MessageCallback", bool useMainWallet = false, WalletType typeToUse = WalletType.Default)
+		{
+		// Dryrun doesn't need wallet - it's a read-only simulation
+#if UNITY_EDITOR
+		// No wallet needed for dryrun in editor
+		SendMessageViaNodeScriptAsync(pid, data, tags, id, null, objectCallback, methodCallback, messageMode: "dryrun", this.GetCancellationTokenOnDestroy()).Forget();
+#else
+		// No wallet queue needed for dryrun - just call directly
+			SendDryrunJS(pid, data, tags, id, objectCallback, methodCallback, useMainWalletString, chain);
 #endif
 		}
 
@@ -665,11 +680,11 @@ namespace Permaverse.AO
 		/// <summary>
 		/// Async version of SendMessageViaNodeScript using UniTask
 		/// </summary>
-		private async UniTask SendMessageViaNodeScriptAsync(string pid, string data, string tags, string id, string hyperBeamUrl, string objectCallback, string methodCallback, bool isLegacyMode = false, CancellationToken cancellationToken = default)
+		private async UniTask SendMessageViaNodeScriptAsync(string pid, string data, string tags, string id, string hyperBeamUrl, string objectCallback, string methodCallback, string messageMode = "hyperbeam", CancellationToken cancellationToken = default)
 		{
 			try
 			{
-				string modeLabel = isLegacyMode ? "Legacy AO" : "HyperBEAM";
+				string modeLabel = messageMode == "legacy" ? "Legacy AO" : (messageMode == "dryrun" ? "Dryrun" : "HyperBEAM");
 				Debug.Log($"[AOConnectManager] Sending {modeLabel} message via Node.js script in editor");
 
 				// Build command arguments
@@ -690,85 +705,85 @@ namespace Permaverse.AO
 				// Add configuration
 				arguments.Add("--process-id");
 				arguments.Add(pid);
+			
+			// Only add wallet for modes that need it (not dryrun)
+			if (messageMode != "dryrun")
+			{
 				arguments.Add("--wallet");
 				arguments.Add(editorWalletPath);
-				arguments.Add("--output");
-				arguments.Add("unity");
-				arguments.Add("--mode");
-				arguments.Add(isLegacyMode ? "legacy" : "hyperbeam");
-				arguments.Add("--log-level");
-				arguments.Add("none"); // Use silent mode for production usage
+			}
+			
+			arguments.Add("--output");
+			arguments.Add("unity");
+			arguments.Add("--mode");
+			arguments.Add(messageMode);
+			arguments.Add("--log-level");
+			arguments.Add("none"); // Use silent mode for production usage
 
-				// Add HyperBEAM URL only for HyperBEAM mode
-				if (!isLegacyMode && !string.IsNullOrEmpty(hyperBeamUrl))
+			// Add HyperBEAM URL only for HyperBEAM mode
+			if (messageMode == "hyperbeam" && !string.IsNullOrEmpty(hyperBeamUrl))
+			{
+				arguments.Add("--hyperbeam-url");
+				arguments.Add(hyperBeamUrl);
+			}
+
+			// Add unique ID for request/response correlation
+			if (!string.IsNullOrEmpty(id))
+			{
+				arguments.Add("--unique-id");
+			arguments.Add(id);
+		}
+
+		// Add data if provided using base64 encoding to avoid command line escaping issues
+		if (!string.IsNullOrEmpty(data))
+		{
+			// Encode data as base64 to avoid command line escaping issues with JSON
+			byte[] dataBytes = System.Text.Encoding.UTF8.GetBytes(data);
+			string dataBase64 = Convert.ToBase64String(dataBytes);
+
+			arguments.Add("--data-base64");
+			arguments.Add(dataBase64);
+			Debug.Log($"[AOConnectManager] Encoding data as base64 ({dataBytes.Length} bytes)");
+			Debug.Log($"[AOConnectManager] Data: {data}");
+		}
+
+		// Parse and add tags using base64 encoding for the entire tags object
+		if (!string.IsNullOrEmpty(tags))
+		{
+			try
+			{
+				var tagsJson = SimpleJSON.JSON.Parse(tags);
+				if (tagsJson.IsArray)
 				{
-					arguments.Add("--hyperbeam-url");
-					arguments.Add(hyperBeamUrl);
-				}
-
-				// Add unique ID for request/response correlation
-				if (!string.IsNullOrEmpty(id))
-				{
-					arguments.Add("--unique-id");
-					arguments.Add(id);
-				}
-
-				// Add data if provided using base64 encoding to avoid command line escaping issues
-				if (!string.IsNullOrEmpty(data))
-				{
-					// Encode data as base64 to avoid command line escaping issues with JSON
-					byte[] dataBytes = System.Text.Encoding.UTF8.GetBytes(data);
-					string dataBase64 = Convert.ToBase64String(dataBytes);
-
-					arguments.Add("--data-base64");
-					arguments.Add(dataBase64);
-					Debug.Log($"[AOConnectManager] Encoding data as base64 ({dataBytes.Length} bytes)");
-					Debug.Log($"[AOConnectManager] Data: {data}");
-				}
-
-				// Parse and add tags using base64 encoding for the entire tags object
-				if (!string.IsNullOrEmpty(tags))
-				{
-					try
+					// Convert tags array directly to JSON object format for base64 encoding
+					var tagsObjectJson = new SimpleJSON.JSONObject();
+				for (int i = 0; i < tagsJson.AsArray.Count; i++)
 					{
-						var tagsJson = SimpleJSON.JSON.Parse(tags);
-						if (tagsJson.IsArray)
+						var tagNode = tagsJson.AsArray[i];
+						if (tagNode.HasKey("name") && tagNode.HasKey("value"))
 						{
-							// Convert tags array directly to JSON object format for base64 encoding
-							var tagsObjectJson = new SimpleJSON.JSONObject();
-							for (int i = 0; i < tagsJson.AsArray.Count; i++)
-							{
-								var tagNode = tagsJson.AsArray[i];
-								if (tagNode.HasKey("name") && tagNode.HasKey("value"))
-								{
-									string tagName = tagNode["name"];
-									string tagValue = tagNode["value"];
-									tagsObjectJson[tagName] = tagValue;
-								}
-							}
-
-							// Encode tags object as base64
-							string tagsObjectJsonString = tagsObjectJson.ToString();
-							byte[] tagsBytes = System.Text.Encoding.UTF8.GetBytes(tagsObjectJsonString);
-							string tagsBase64 = Convert.ToBase64String(tagsBytes);
-
-							arguments.Add("--tags-base64");
-							arguments.Add(tagsBase64);
-							Debug.Log($"[AOConnectManager] Encoding tags as base64: {tagsObjectJsonString}");
+							string tagName = tagNode["name"];
+							string tagValue = tagNode["value"];
+							tagsObjectJson[tagName] = tagValue;
 						}
 					}
-					catch (Exception e)
-					{
-						Debug.LogWarning($"[AOConnectManager] Failed to parse tags: {e.Message}");
-					}
+
+					// Encode tags object as base64
+					string tagsObjectJsonString = tagsObjectJson.ToString();
+				byte[] tagsBytes = System.Text.Encoding.UTF8.GetBytes(tagsObjectJsonString);				string tagsBase64 = Convert.ToBase64String(tagsBytes);
+					arguments.Add("--tags-base64");
+					arguments.Add(tagsBase64);
+					Debug.Log($"[AOConnectManager] Encoding tags as base64: {tagsObjectJsonString}");
 				}
+			}
+			catch (Exception e)
+			{
+				Debug.LogWarning($"[AOConnectManager] Failed to parse tags: {e.Message}");
+			}
+		}
 
-				// Execute Node.js script asynchronously using NodeJsUtils
-				string output = await NodeJsUtils.ExecuteNodeScriptAsync(arguments.Select(arg => $"\"{arg}\"").ToArray());
-
-				// Log output length for debugging large responses
-				if(showLogs) Debug.Log($"[AOConnectManager] Node.js script completed. Output: {output}");
-				
+		// Execute Node.js script asynchronously using NodeJsUtils
+		string output = await NodeJsUtils.ExecuteNodeScriptAsync(arguments.Select(arg => $"\"{arg}\"").ToArray());
 				// Parse response - Node.js script should return the same format as JavaScript sendMessageHyperBeam
 				// Expected format: { "Messages": [], "Spawns": [], "Output": "", "Error": null, "uniqueID": "..." }
 				JSONNode response = null;

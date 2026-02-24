@@ -187,7 +187,7 @@ namespace Permaverse.AO
 			catch (Exception ex)
 			{
 				// Handle other exceptions during the request
-				if (showLogs) Debug.LogError($"[{gameObject.name}] HyperBEAM path Exception: {ex.Message}");
+				if (showLogs && (errorsToIgnore == null || !errorsToIgnore.Contains(request.responseCode))) Debug.LogError($"[{gameObject.name}] HyperBEAM path Exception: {ex.Message}");
 			}
 
 			if (request.result == UnityWebRequest.Result.Success)

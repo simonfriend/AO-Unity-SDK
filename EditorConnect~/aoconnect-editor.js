@@ -8,7 +8,7 @@
  * Usage: node aoconnect-editor.js [options]
  */
 
-import { connect, createSigner, message, createDataItemSigner, result } from '@permaweb/aoconnect';
+import { connect, createSigner, message, createDataItemSigner, result, dryrun } from '@permaweb/aoconnect';
 import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
@@ -137,6 +137,63 @@ function loadWallet(walletPath, options) {
     } catch (error) {
         logError(options, '❌ Failed to load wallet from:', walletPath);
         logError(options, '💡 Make sure the wallet file exists and is valid JSON');
+        process.exit(1);
+    }
+}
+
+// Send Dryrun request
+async function sendDryrunMessage(options) {
+    // Dryrun doesn't need wallet - it's a read-only operation
+    
+    logVerbose(options, '🔧 Configuration (Dryrun Mode):');
+    logVerbose(options, '   Process ID:', options.processId);
+    logVerbose(options, '   Data:', options.data || '(empty)');
+    logVerbose(options, '   Tags:', Object.keys(options.tags).length > 0 ? options.tags : '(none)');
+    logVerbose(options, '');
+
+    try {
+        // Convert tags object to array format for dryrun
+        const tagsArray = Object.entries(options.tags).map(([name, value]) => ({
+            name,
+            value
+        }));
+
+        logVerbose(options, '📤 Sending dryrun with parameters:');
+        logVerbose(options, '   Process:', options.processId);
+        logVerbose(options, '   Tags:', tagsArray);
+        logVerbose(options, '   Data:', options.data || '(empty)');
+        logVerbose(options, '');
+
+        // Send dryrun request
+        const dryrunResult = await dryrun({
+            process: options.processId,
+            tags: tagsArray,
+            data: options.data || "",
+            anchor: Math.round(Date.now() / 1000)
+                .toString()
+                .padStart(32, Math.floor(Math.random() * 10).toString())
+        });
+
+        logBasic(options, '✅ Dryrun completed successfully!');
+        logVerbose(options, '');
+
+        return dryrunResult;
+
+    } catch (error) {
+        if (options.output === 'unity') {
+            // Unity-friendly error format
+            const errorResponse = {
+                Messages: [],
+                Spawns: [],
+                Output: { data: "", print: false },
+                Error: error.message,
+                uniqueID: options.uniqueID
+            };
+            console.log(JSON.stringify(errorResponse));
+        } else {
+            logError(options, '❌ Failed to send dryrun:', error.message);
+            logVerbose(options, '💡 Full error:', error);
+        }
         process.exit(1);
     }
 }
@@ -464,13 +521,13 @@ function showHelp() {
    -v, --verbose                 Enable verbose logging (same as --log-level verbose)
    -p, --process-id <id>         Target process ID (default: ${DEFAULT_PROCESS_ID})
    -u, --hyperbeam-url <url>     HyperBEAM URL (default: ${DEFAULT_HYPERBEAM_URL})
-   -w, --wallet <path>           Arweave wallet keyfile path (default: ../wallet.json)
+   -w, --wallet <path>           Arweave wallet keyfile (only for hyperbeam/legacy modes)
    -d, --data <data>             Message data payload (raw string)
    --data-base64 <data>          Message data payload (base64 encoded)
    --tags-base64 <tags>          All tags as base64 encoded JSON object
    -t, --tag-<key>=<value>       Add individual tag (e.g., --tag-Action=GetUserInfo)
    -o, --output <format>         Output format: unity, raw (default: raw)
-   -m, --mode <mode>             Mode: hyperbeam, legacy (default: hyperbeam)
+   -m, --mode <mode>             Mode: hyperbeam, dryrun, legacy (default: hyperbeam)
    --unique-id <id>              Unique identifier for Unity callbacks
 
 🎯 Output Formats:
@@ -492,6 +549,9 @@ function showHelp() {
    # Using base64 encoded data
    node aoconnect-editor.js --data-base64 eyJrZXkiOiJ2YWx1ZSJ9 --tag-Action=ProcessData
    
+   # Dryrun mode (optimized for read-only queries)
+   node aoconnect-editor.js --mode dryrun --tag-Action=GetUserInfo
+   
    # Legacy AO mode
    node aoconnect-editor.js --mode legacy --tag-Action=GetUserInfo
    
@@ -511,9 +571,14 @@ function showHelp() {
    # Custom wallet path with verbose logging
    node aoconnect-editor.js --verbose --wallet /path/to/wallet.json --tag-Action=GetUserInfo🌐 Requirements:
    - Node.js (v16 or higher)
-   - Valid Arweave wallet keyfile
    - @permaweb/aoconnect package installed
-   - HyperBEAM running locally (for HyperBEAM mode only)
+   - Valid Arweave wallet keyfile (for HyperBEAM and Legacy modes only)
+   - HyperBEAM URL (only for HyperBEAM mode)
+
+📝 Notes:
+   - Dryrun mode: No wallet required (read-only, optimized)
+   - HyperBEAM mode: Requires wallet and HyperBEAM URL
+   - Legacy mode: Requires wallet (slower, no HyperBEAM required)
 
 🛠️  Setup:
    # macOS/Linux:
@@ -541,6 +606,9 @@ async function main() {
         if (options.mode === 'legacy') {
             // Use legacy AO message sending
             result = await sendLegacyMessage(options);
+        } else if (options.mode === 'dryrun') {
+            // Use aoconnect dryrun (more optimized than HTTP request)
+            result = await sendDryrunMessage(options);
         } else {
             // Use HyperBEAM message sending (default)
             result = await sendHyperBeamMessage(options);

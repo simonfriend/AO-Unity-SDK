@@ -225,7 +225,7 @@ namespace Permaverse.AO
 		{
 			if (method == NetworkMethod.Dryrun)
 			{
-				return await SendHttpPostRequestAsync(pid, tags, data, useMainWallet, walletType, cancellationToken);
+				return await SendDryrunRequestAsync(pid, data, tags, useMainWallet, walletType, cancellationToken);
 			}
 			else if (method == NetworkMethod.HyperBeamMessage)
 			{
@@ -380,11 +380,62 @@ namespace Permaverse.AO
 		}
 
 		/// <summary>
-		/// Send HyperBeam message - single attempt without retry logic
+		/// Send dryrun request using aoconnect - single attempt without retry logic
+		/// Dryrun is a read-only simulation and doesn't require wallet signing
 		/// </summary>
-		protected virtual async UniTask<(bool success, NodeCU result)> SendHyperBeamMessageAsync(string pid, string data, List<Tag> tags, bool useMainWallet = false, WalletType walletType = WalletType.Default, CancellationToken cancellationToken = default)
+		protected virtual async UniTask<(bool success, NodeCU result)> SendDryrunRequestAsync(string pid, string data, List<Tag> tags, bool useMainWallet = false, WalletType walletType = WalletType.Default, CancellationToken cancellationToken = default)
 		{
-			string ownerId = GetOwnerId(useMainWallet, walletType);
+			// Dryrun doesn't need wallet - it's a read-only simulation
+			if (data == null)
+			{
+				data = "";
+			}
+
+			if (showLogs)
+			{
+				Debug.Log($"[{gameObject.name}] Sending dryrun to {pid} with data: {data}");
+			}
+
+			requestsCount++;
+			string uniqueID = requestsCount.ToString();
+
+		results[uniqueID] = (false, string.Empty, "dryrun");
+
+		JSONArray tagsJsonArray = new JSONArray();
+		foreach (var tag in tags)
+		{
+			tagsJsonArray.Add(tag.ToJson());
+		}
+
+		if (AOConnectManager.main.addClientVersionTag && !string.IsNullOrEmpty(AOConnectManager.main.clientVersion))
+		{
+			tagsJsonArray.Add(new Tag("ClientVersion", AOConnectManager.main.clientVersion).ToJson());
+		}
+
+		string tagsStr = tagsJsonArray.ToString();
+
+		AOConnectManager.main.SendDryrun(pid, data, tagsStr, uniqueID, gameObject.name, "MessageCallback", useMainWallet, walletType);
+
+		// Wait for result
+		await UniTask.WaitUntil(() => results[uniqueID].Item1, cancellationToken: cancellationToken);
+
+		string result = results[uniqueID].Item2;
+
+		if (showLogs)
+		{
+			Debug.Log($"[{gameObject.name}] Dryrun Result: {result}");
+		}
+
+		results.Remove(uniqueID);
+		return (true, new NodeCU(result));
+	}
+
+	/// <summary>
+	/// Send HyperBeam message - single attempt without retry logic
+	/// </summary>
+	protected virtual async UniTask<(bool success, NodeCU result)> SendHyperBeamMessageAsync(string pid, string data, List<Tag> tags, bool useMainWallet = false, WalletType walletType = WalletType.Default, CancellationToken cancellationToken = default)
+	{
+		string ownerId = GetOwnerId(useMainWallet, walletType);
 			if (ownerId == null)
 			{
 				var errorResponse = new NodeCU("{\"Error\":\"No wallet info found for specified type\"}");

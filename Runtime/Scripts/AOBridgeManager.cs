@@ -140,7 +140,7 @@ namespace Permaverse.AO
             oracleMessageHandler.SendRequestAsync(oracleAddress, new List<Tag>
             {
                 new Tag("Action","Set-Delegations"),
-            }, data.ToString(), MessageHandler.NetworkMethod.Message, callback: OnDelegationChanged).Forget();
+            }, data.ToString(), MessageHandler.NetworkMethod.HyperBeamMessage, callback: OnDelegationChanged).Forget();
         }
 
         public void OnDelegationChanged(bool result, NodeCU response)

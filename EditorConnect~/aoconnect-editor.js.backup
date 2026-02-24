@@ -1,0 +1,751 @@
+#!/usr/bin/env node
+
+/**
+ * AOConnect Editor Tester - Node.js script for testing AO messages from Unity Editor
+ * 
+ * Supports both HyperBEAM and legacy AO message modes for development and testing.
+ * This script can be called from Unity Editor to send messages during development.
+ * Usage: node aoconnect-editor.js [options]
+ */
+
+import { connect, createSigner, message, createDataItemSigner, result } from '@permaweb/aoconnect';
+import fs from 'fs';
+import path from 'path';
+import { fileURLToPath } from 'url';
+import { dirname } from 'path';
+
+// ESM equivalent of __dirname
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = dirname(__filename);
+
+// Configuration
+const DEFAULT_PROCESS_ID = "c9pY_6qwccWuUXklVMURri56cYjYUpKS0B_wSegjDkk"; // Your StarGrid process ID
+const DEFAULT_HYPERBEAM_URL = "https://forward.computer"; // Reliable HyperBEAM node
+const DEFAULT_SCHEDULER = "NoZH3pueH0Cih6zjSNu_KRAcmg4ZJV1aGHKi0Pi5_Hc";
+const DEFAULT_AUTHORITY = "2R56NNRuTqibhE7_xrXeDO7G7XZmfVSEPXE3Squ_PdQ"; // forward.computer authority
+const DEFAULT_MODULE = "ISShJH1ij-hPPt9St5UFFr_8Ys3Kj5cyg7zrMGt7H9s";
+const DEFAULT_WALLET_PATH = path.join(__dirname, '..', 'wallet.json');
+
+// Initialize aoconnect configuration globally
+// This might be needed for the new version
+let aoConfig = null;
+
+// Logging helper functions
+function logBasic(options, message, ...args) {
+    if (options.logLevel === 'basic' || options.logLevel === 'verbose') {
+        console.log(message, ...args);
+    }
+}
+
+function logVerbose(options, message, ...args) {
+    if (options.logLevel === 'verbose') {
+        console.log(message, ...args);
+    }
+}
+
+function logError(options, message, ...args) {
+    // Always log errors regardless of level
+    console.error(message, ...args);
+}
+
+// Parse command line arguments
+function parseArgs() {
+    const args = process.argv.slice(2);
+    const options = {
+        processId: DEFAULT_PROCESS_ID,
+        hyperBeamUrl: DEFAULT_HYPERBEAM_URL,
+        walletPath: DEFAULT_WALLET_PATH,
+        data: "",
+        tags: {},
+        help: false,
+        logLevel: "basic", // none, basic, verbose
+        output: "raw", // unity or raw
+        uniqueID: null, // Will be set from command line or generated if not provided
+        mode: "mainnet", // mainnet or legacy
+        action: "message", // message, spawn, or eval
+        module: DEFAULT_MODULE, // For spawn
+        scheduler: DEFAULT_SCHEDULER, // For spawn
+        authority: DEFAULT_AUTHORITY, // For spawn
+        evalFile: null // For eval action - path to Lua file to load
+    };
+
+    for (let i = 0; i < args.length; i++) {
+        const arg = args[i];
+        
+        if (arg === '--help' || arg === '-h') {
+            options.help = true;
+        } else if (arg === '--verbose' || arg === '-v') {
+            options.logLevel = "verbose"; // Backward compatibility
+        } else if (arg === '--log-level' || arg === '-l') {
+            const level = args[++i];
+            if (['none', 'basic', 'verbose'].includes(level)) {
+                options.logLevel = level;
+            } else {
+                console.error('❌ Invalid log level. Use: none, basic, verbose');
+                process.exit(1);
+            }
+        } else if (arg === '--process-id' || arg === '-p') {
+            options.processId = args[++i];
+        } else if (arg === '--hyperbeam-url' || arg === '-u') {
+            options.hyperBeamUrl = args[++i];
+        } else if (arg === '--wallet' || arg === '-w') {
+            options.walletPath = args[++i];
+        } else if (arg === '--data' || arg === '-d') {
+            options.data = args[++i];
+        } else if (arg === '--data-base64') {
+            // Decode base64 data
+            try {
+                options.data = Buffer.from(args[++i], 'base64').toString('utf8');
+            } catch (error) {
+                console.error('❌ Invalid base64 data:', error.message);
+                process.exit(1);
+            }
+        } else if (arg === '--tags-base64') {
+            // Decode base64 tags JSON
+            try {
+                const tagsJson = Buffer.from(args[++i], 'base64').toString('utf8');
+                const decodedTags = JSON.parse(tagsJson);
+                options.tags = { ...options.tags, ...decodedTags };
+            } catch (error) {
+                console.error('❌ Invalid base64 tags JSON:', error.message);
+                process.exit(1);
+            }
+        } else if (arg === '--output' || arg === '-o') {
+            options.output = args[++i];
+        } else if (arg === '--mode' || arg === '-m') {
+            options.mode = args[++i];
+        } else if (arg === '--action' || arg === '-a') {
+            options.action = args[++i];
+        } else if (arg === '--spawn') {
+            options.action = 'spawn';
+        } else if (arg === '--eval') {
+            options.action = 'eval';
+        } else if (arg === '--file') {
+            options.evalFile = args[++i];
+        } else if (arg === '--module') {
+            options.module = args[++i];
+        } else if (arg === '--scheduler') {
+            options.scheduler = args[++i];
+        } else if (arg === '--authority') {
+            options.authority = args[++i];
+        } else if (arg === '--unique-id') {
+            options.uniqueID = args[++i];
+        } else if (arg.startsWith('--tag-')) {
+            // Handle --tag-Action=EnterMatchmaking style arguments
+            const tagName = arg.substring(6); // Remove '--tag-'
+            if (tagName.includes('=')) {
+                const [key, value] = tagName.split('=', 2);
+                options.tags[key] = value;
+            } else {
+                options.tags[tagName] = args[++i];
+            }
+        } else if (arg.startsWith('-t')) {
+            // Handle -tAction=EnterMatchmaking style arguments
+            const tagDef = arg.substring(2); // Remove '-t'
+            if (tagDef.includes('=')) {
+                const [key, value] = tagDef.split('=', 2);
+                options.tags[key] = value;
+            } else {
+                const key = tagDef || args[++i];
+                options.tags[key] = args[++i];
+            }
+        }
+    }
+
+    return options;
+}
+
+// Load wallet
+function loadWallet(walletPath, options) {
+    try {
+        const wallet = JSON.parse(fs.readFileSync(walletPath, 'utf8'));
+        return wallet;
+    } catch (error) {
+        logError(options, '❌ Failed to load wallet from:', walletPath);
+        logError(options, '💡 Make sure the wallet file exists and is valid JSON');
+        process.exit(1);
+    }
+}
+
+// Spawn a new process (HyperBEAM or legacy)
+async function spawnProcess(options) {
+    const wallet = loadWallet(options.walletPath, options);
+    
+    logVerbose(options, '🔧 Spawn Configuration:');
+    logVerbose(options, '   Mode:', options.mode);
+    logVerbose(options, '   Module:', options.module);
+    logVerbose(options, '   Scheduler:', options.scheduler);
+    logVerbose(options, '   Authority:', options.authority);
+    logVerbose(options, '   HyperBEAM URL:', options.hyperBeamUrl);
+    logVerbose(options, '   Wallet Path:', options.walletPath);
+    logVerbose(options, '   Tags:', Object.keys(options.tags).length > 0 ? options.tags : '(none)');
+    logVerbose(options, '   Wallet:', wallet ? 'Loaded' : 'Not loaded');
+    logVerbose(options, '');
+
+    let aoConfig;
+    
+    try {
+        if (options.mode === 'mainnet') {
+            // Mainnet mode (HyperBEAM) with SCHEDULER - pass signer to connect!
+            logVerbose(options, '🔧 Initializing mainnet connection for spawn...');
+            aoConfig = connect({ 
+                MODE: 'mainnet', 
+                URL: options.hyperBeamUrl,
+                SCHEDULER: options.scheduler,
+                signer: createSigner(wallet)  // Pass signer here for AOCore.init!
+            });
+            logVerbose(options, '   Connected:', typeof aoConfig);
+        } else {
+            // Legacy mode - use default connection
+            logVerbose(options, '🔧 Initializing legacy connection for spawn...');
+            aoConfig = connect();
+            logVerbose(options, '   Connected:', typeof aoConfig);
+        }
+        
+        // Convert tags object to array format and add Authority
+        const tagsArray = Object.entries(options.tags).map(([name, value]) => ({
+            name,
+            value
+        }));
+        
+        // Add Authority tag (lowercase for mainnet, uppercase for legacy)
+        // COMMENTED: Testing if case matters - keeping uppercase for now to see if second Authority is additional rather than duplicate
+        // const authorityTagName = options.mode === 'mainnet' ? 'authority' : 'Authority';
+        const authorityTagName = 'Authority'; // Always uppercase for testing
+        tagsArray.push({ name: authorityTagName, value: options.authority });
+        
+        // Add Name tag if not already present, using current timestamp for uniqueness
+        const hasNameTag = tagsArray.some(tag => tag.name === 'Name' || tag.name === 'name');
+        if (!hasNameTag) {
+            const timestamp = Date.now(); // milliseconds since epoch
+            const processName = `Process_${timestamp}`;
+            tagsArray.push({ name: 'Name', value: processName });
+        }
+
+        // Hyper aos tags for better performance (lua@5.3a instead of genesis-wasm)
+        tagsArray.push({ name: 'execution-device', value: 'lua@5.3a' });
+        tagsArray.push({ name: 'signing-format', value: 'httpsig' });
+
+        logVerbose(options, '🚀 Spawning process with parameters:');
+        logVerbose(options, '   Module:', options.module);
+        logVerbose(options, '   Scheduler:', options.scheduler);
+        logVerbose(options, '   Tags:', tagsArray);
+        logVerbose(options, '   Data:', options.data || '(empty)');
+        logVerbose(options, '');
+
+        // Spawn the process
+        const processId = await aoConfig.spawn({
+            module: options.module,
+            scheduler: options.scheduler,
+            signer: createDataItemSigner(wallet),
+            tags: tagsArray,
+            data: options.data || ""
+        });
+
+        logVerbose(options, '✨ Process spawned successfully!');
+        logVerbose(options, '   Process ID:', processId);
+        logBasic(options, '✅ Process spawned:', processId);
+        logVerbose(options, '');
+
+        return { ProcessId: processId };
+
+    } catch (error) {
+        if (options.output === 'unity') {
+            const errorResponse = {
+                ProcessId: null,
+                Error: error.message,
+                uniqueID: options.uniqueID
+            };
+            return errorResponse;
+        } else {
+            throw error;
+        }
+    }
+}
+
+// Eval code from file
+async function evalCode(options) {
+    // Validate required parameters
+    if (!options.evalFile) {
+        throw new Error('--file parameter is required for eval action');
+    }
+    
+    if (!options.processId) {
+        throw new Error('--process-id parameter is required for eval action');
+    }
+
+    const wallet = loadWallet(options.walletPath, options);
+    
+    logVerbose(options, '🔧 Eval Configuration:');
+    logVerbose(options, '   Mode:', options.mode);
+    logVerbose(options, '   Process ID:', options.processId);
+    logVerbose(options, '   File:', options.evalFile);
+    logVerbose(options, '   HyperBEAM URL:', options.hyperBeamUrl);
+    logVerbose(options, '');
+
+    try {
+        // Read the file
+        logBasic(options, '📖 Reading file:', options.evalFile);
+        const fileContent = fs.readFileSync(options.evalFile, 'utf8');
+        logVerbose(options, '   File size:', fileContent.length, 'bytes');
+        logVerbose(options, '');
+
+        // Initialize aoconnect with appropriate configuration
+        let aoConfig;
+        if (options.mode === 'mainnet') {
+            logVerbose(options, '🔧 Initializing mainnet connection...');
+            aoConfig = connect({ 
+                MODE: 'mainnet', 
+                URL: options.hyperBeamUrl,
+                SCHEDULER: DEFAULT_SCHEDULER,
+                signer: createSigner(wallet)
+            });
+        } else {
+            logVerbose(options, '🔧 Initializing legacy connection...');
+            aoConfig = connect();
+        }
+
+        const ao = aoConfig;
+
+        // Send Eval message
+        logBasic(options, '🚀 Sending Eval message...');
+        const messageId = await ao.message({
+            process: options.processId,
+            tags: [
+                { name: 'Action', value: 'Eval' }
+            ],
+            data: fileContent
+        });
+
+        logVerbose(options, '   Message ID:', messageId);
+        logVerbose(options, '');
+
+        // Get result
+        logBasic(options, '⏳ Waiting for result...');
+        const result = await ao.result({
+            message: messageId,
+            process: options.processId
+        });
+
+        logBasic(options, '✅ Eval completed');
+        logVerbose(options, '   Result:', JSON.stringify(result, null, 2));
+        logVerbose(options, '');
+
+        return result;
+
+    } catch (error) {
+        if (options.output === 'unity') {
+            const errorResponse = {
+                Messages: [],
+                Spawns: [],
+                Output: "",
+                Error: error.message,
+                uniqueID: options.uniqueID
+            };
+            return errorResponse;
+        } else {
+            throw error;
+        }
+    }
+}
+
+// Send Unified AO message (works for both legacy and HyperBEAM)
+async function sendUnifiedMessage(options) {
+    const wallet = loadWallet(options.walletPath, options);
+    
+    logVerbose(options, '🔧 Configuration:');
+    logVerbose(options, '   Mode:', options.mode);
+    logVerbose(options, '   Process ID:', options.processId);
+    logVerbose(options, '   HyperBEAM URL:', options.hyperBeamUrl);
+    logVerbose(options, '   Wallet Path:', options.walletPath);
+    logVerbose(options, '   Data:', options.data || '(empty)');
+    logVerbose(options, '   Tags:', Object.keys(options.tags).length > 0 ? options.tags : '(none)');
+    logVerbose(options, '   Wallet:', wallet ? 'Loaded' : 'Not loaded');
+    logVerbose(options, '');
+
+    try {
+        // Initialize aoconnect with appropriate configuration
+        if (options.mode === 'mainnet') {
+            // Mainnet mode (HyperBEAM) - use request() directly for raw response with outbox
+            logVerbose(options, '🔧 Initializing mainnet connection...');
+            aoConfig = connect({ 
+                MODE: 'mainnet', 
+                URL: options.hyperBeamUrl,
+                SCHEDULER: DEFAULT_SCHEDULER,
+                signer: createSigner(wallet)
+            });
+            logVerbose(options, '   Connected:', typeof aoConfig);
+            logVerbose(options, '');
+
+            // Build request parameters for direct request() call
+            const requestParams = {
+                path: `/${options.processId}~process@1.0/push`,
+                target: options.processId,
+                data: options.data || "1984",
+                method: "POST",
+                "signing-format": "ans104",
+                "accept-bundle": "true",
+                "require-codec": "application/json",
+                "Data-Protocol": "ao",
+                Type: "Message",
+                Variant: "ao.N.1"
+            };
+
+            // Add custom tags as top-level properties
+            Object.entries(options.tags).forEach(([name, value]) => {
+                requestParams[name] = value;
+            });
+
+            logVerbose(options, '📤 Sending HyperBEAM message with request():');
+            logVerbose(options, '   Process:', options.processId);
+            logVerbose(options, '   Tags:', options.tags);
+            logVerbose(options, '   Data:', options.data || '(empty)');
+            logVerbose(options, '');
+
+            // Use request() directly to get raw HyperBEAM response with outbox
+            const response = await aoConfig.request(requestParams);
+            
+            if (!response.ok) {
+                throw new Error(`Request failed with status ${response.status}`);
+            }
+
+            const rawBody = await response.json();
+            
+            logVerbose(options, '📨 Message sent successfully');
+            logVerbose(options, '📦 Raw HyperBEAM Response:', JSON.stringify(rawBody, null, 2));
+
+            // Convert HyperBEAM response to Unity-friendly format
+            const unifiedResult = {
+                Messages: rawBody.outbox || [],  // outbox becomes Messages for Unity
+                Output: rawBody.output?.data || rawBody.output?.print || "",
+                Spawns: [],
+                Assignments: [],
+                Slot: rawBody.slot,
+                Process: rawBody.process
+            };
+
+            logVerbose(options, '📦 Unity-friendly Result:', JSON.stringify(unifiedResult, null, 2));
+            logBasic(options, '✅ HyperBEAM message sent successfully!');
+            logVerbose(options, '');
+
+            return unifiedResult;
+
+        } else {
+            // Legacy mode - use message() + result() pattern
+            logVerbose(options, '🔧 Initializing legacy connection...');
+            aoConfig = connect();
+            logVerbose(options, '   Connected:', typeof aoConfig);
+        }
+        
+        // Convert tags object to array format (unified approach)
+        const tagsArray = Object.entries(options.tags).map(([name, value]) => ({
+            name,
+            value
+        }));
+
+        logVerbose(options, '📤 Sending unified message with parameters:');
+        logVerbose(options, '   Process:', options.processId);
+        logVerbose(options, '   Tags:', tagsArray);
+        logVerbose(options, '   Data:', options.data || '(empty)');
+        logVerbose(options, '');
+
+        // Send message using the configured connection
+        // Use fullResponse option to get outbox, output, etc. directly from push response
+        const messageResponse = await aoConfig.message({
+            process: options.processId,
+            tags: tagsArray,
+            signer: createDataItemSigner(wallet),
+            data: options.data || "",
+            anchor: Math.round(Date.now() / 1000)
+            .toString()
+            .padStart(32, Math.floor(Math.random() * 10).toString()),
+            opts: { fullResponse: true }  // Get full response with outbox, output, etc.
+        });
+
+        logVerbose(options, '📨 Message sent with full response');
+        logVerbose(options, '� Push Response:', JSON.stringify(messageResponse, null, 2));
+
+        // Extract the useful data from the push response
+        const unifiedResult = messageResponse;
+
+        logVerbose(options, '📦 Raw result response type:', typeof unifiedResult);
+        logVerbose(options, '📦 Raw result response:', JSON.stringify(unifiedResult, null, 2));
+        logBasic(options, '✅ Unified AO message sent successfully!');
+        logVerbose(options, '');
+
+        return unifiedResult;
+
+    } catch (error) {
+        if (options.output === 'unity') {
+            // Unity-friendly error format
+            const errorResponse = {
+                Messages: [],
+                Spawns: [],
+                Output: "",
+                Error: error.message,
+                uniqueID: options.uniqueID
+            };
+            console.log(JSON.stringify(errorResponse));
+        } else {
+            logError(options, '❌ Failed to send unified AO message:', error.message);
+            logVerbose(options, '💡 Full error:', error);
+        }
+        process.exit(1);
+    }
+}
+
+// Send HyperBEAM message
+// async function sendHyperBeamMessage(options) {
+//     const wallet = loadWallet(options.walletPath, options);
+    
+//     logVerbose(options, '🔧 Configuration:');
+//     logVerbose(options, '   Process ID:', options.processId);
+//     logVerbose(options, '   HyperBEAM URL:', options.hyperBeamUrl);
+//     logVerbose(options, '   Wallet Path:', options.walletPath);
+//     logVerbose(options, '   Data:', options.data || '(empty)');
+//     logVerbose(options, '   Tags:', Object.keys(options.tags).length > 0 ? options.tags : '(none)');
+//     logVerbose(options, '   Wallet:', wallet ? 'Loaded' : 'Not loaded');
+//     logVerbose(options, '');
+
+//     // Create HyperBEAM connection
+//     const { request } = connect({
+//         MODE: "mainnet",
+//         URL: options.hyperBeamUrl,
+//         signer: createSigner(wallet),
+//     });
+
+//     try {
+//         // Build request parameters
+//         //path: `/${options.processId}~process@1.0/push?accept=application/json&accept-bundle=true`,
+//         //path: `/${options.processId}~process@1.0/push/serialize~json@1.0`,
+//         const requestParams = {
+//             path: `/${options.processId}~process@1.0/push`,
+//             method: "POST",
+//             target: options.processId,
+//             signingFormat: "ANS-104",
+//         };
+
+//         // Add data if provided
+//         if (options.data) {
+//             requestParams.data = options.data;
+//         }
+
+//         // Add tags as properties
+//         Object.assign(requestParams, options.tags);
+
+//         logVerbose(options, '📤 Sending request with parameters:', requestParams);
+//         logVerbose(options, '');
+
+//         // Send request via HyperBEAM
+//         const result = await request(requestParams);
+
+//         logBasic(options, '✅ HyperBEAM message sent successfully!');
+//         logVerbose(options, '');
+
+//         return result;
+
+//     } catch (error) {
+//         if (options.output === 'unity') {
+//             // Unity-friendly error format - same as JavaScript sendMessageHyperBeam
+//             const errorResponse = {
+//                 Messages: [],
+//                 Spawns: [],
+//                 Output: "",
+//                 Error: error.message,
+//                 uniqueID: options.uniqueID
+//             };
+//             console.log(JSON.stringify(errorResponse));
+//         } else {
+//             logError(options, '❌ Failed to send HyperBEAM message:', error.message);
+//             logVerbose(options, '💡 Full error:', error);
+//         }
+//         process.exit(1);
+//     }
+// }
+
+// Format output based on requested format
+function formatOutput(result, options) {
+    switch (options.output) {
+        case 'unity':
+            // Unity-friendly JSON format - unified response handling
+            try {
+                // With the new unified aoconnect version, the response should be consistent
+                // between legacy and HyperBEAM modes
+                logVerbose(options, '🔍 Raw result structure:', JSON.stringify(result, null, 2));
+                
+                // Return the same format as JavaScript sendMessage functions
+                const response = {
+                    Messages: result.Messages || [],
+                    Spawns: result.Spawns || [],
+                    Output: result.Output || "",
+                    Error: result.Error || null,
+                    uniqueID: options.uniqueID
+                };
+
+                return JSON.stringify(response);
+                
+            } catch (bodyError) {
+                logVerbose(options, '⚠️ Response parsing failed:', bodyError.message);
+                // Handle case where parsing fails
+                const fallbackResponse = {
+                    Messages: [],
+                    Spawns: [],
+                    Output: result ? JSON.stringify(result) : "",
+                    Error: `Response parsing failed: ${bodyError.message}`,
+                    uniqueID: options.uniqueID
+                };
+                
+                return JSON.stringify(fallbackResponse);
+            }
+            
+        case 'raw':
+        default:
+            // Raw JSON output - unprocessed result for debugging
+            return JSON.stringify(result, null, 2);
+    }
+}
+
+// Show help
+function showHelp() {
+    console.log(`
+🚀 AOConnect Editor Tester - Send AO messages from Unity Editor
+
+📖 Usage:
+   node aoconnect-editor.js [options]
+
+🔧 Options:
+   -h, --help                    Show this help message
+   --log-level <level>           Log level: none, basic, verbose (default: basic)
+   -v, --verbose                 Enable verbose logging (same as --log-level verbose)
+   -p, --process-id <id>         Target process ID (default: ${DEFAULT_PROCESS_ID})
+   -u, --hyperbeam-url <url>     HyperBEAM URL (default: ${DEFAULT_HYPERBEAM_URL})
+   -w, --wallet <path>           Arweave wallet keyfile path (default: ../wallet.json)
+   -d, --data <data>             Message data payload (raw string)
+   --data-base64 <data>          Message data payload (base64 encoded)
+   --tags-base64 <tags>          All tags as base64 encoded JSON object
+   -t, --tag-<key>=<value>       Add individual tag (e.g., --tag-Action=GetUserInfo)
+   -o, --output <format>         Output format: unity, raw (default: raw)
+   -m, --mode <mode>             Mode: mainnet, legacy (default: mainnet)
+   -a, --action <action>         Action: message, spawn, eval (default: message)
+   --spawn                       Shortcut for --action spawn
+   --eval                        Shortcut for --action eval
+   --file <path>                 Lua file to load (for eval action)
+   --module <id>                 Module ID for spawn (default: ${DEFAULT_MODULE})
+   --scheduler <id>              Scheduler for spawn (default: ${DEFAULT_SCHEDULER})
+   --authority <id>              Authority for spawn (default: ${DEFAULT_AUTHORITY})
+   --unique-id <id>              Unique identifier for Unity callbacks
+
+🎯 Output Formats:
+   • unity: Structured format for Unity integration (Messages, Spawns, Output, Error)
+   • raw:   Unprocessed response for debugging
+
+📊 Log Levels:
+   • none:    Silent mode for production performance
+   • basic:   Essential information only
+   • verbose: Detailed debugging information
+
+📋 Examples:
+   # Basic message with HyperBEAM (default)
+   node aoconnect-editor.js --tag-Action=GetUserInfo
+   
+   # Spawn a new process on HyperBEAM
+   node aoconnect-editor.js --spawn --tag-Name=MyProcess --log-level verbose
+   
+   # Spawn with custom module and scheduler
+   node aoconnect-editor.js --spawn --module <module-id> --scheduler <scheduler-id> --tag-Name=TestProcess
+   
+   # Load and eval Lua code into a process
+   node aoconnect-editor.js --eval --file ./my-code.lua --process-id <process-id>
+   
+   # Using base64 encoded tags (recommended for complex data)
+   node aoconnect-editor.js --tags-base64 eyJBY3Rpb24iOiJHZXRVc2VySW5mbyJ9
+   
+   # Using base64 encoded data
+   node aoconnect-editor.js --data-base64 eyJrZXkiOiJ2YWx1ZSJ9 --tag-Action=ProcessData
+   
+   # Legacy AO mode
+   node aoconnect-editor.js --mode legacy --tag-Action=GetUserInfo
+   
+   # Silent mode for performance
+   node aoconnect-editor.js --log-level none --tag-Action=GetUserInfo
+   
+
+   
+   # Unity-friendly output format
+   node aoconnect-editor.js --output unity --tag-Action=GetUserInfo
+   
+   # Custom wallet path with verbose logging
+   node aoconnect-editor.js --verbose --wallet /path/to/wallet.json --tag-Action=GetUserInfo🌐 Requirements:
+   - Node.js (v16 or higher)
+   - Valid Arweave wallet keyfile
+   - @permaweb/aoconnect package installed
+   - HyperBEAM running locally (for HyperBEAM mode only)
+
+🛠️  Setup:
+   # macOS/Linux:
+   cd EditorConnect
+   ./setup.sh
+   
+   # Windows:
+   cd EditorConnect
+   setup.bat
+`);
+}
+
+// Main execution
+async function main() {
+    const options = parseArgs();
+
+    if (options.help) {
+        showHelp();
+        process.exit(0);
+    }
+
+    try {
+        let result;
+        
+        // Choose action: spawn, eval, or message
+        if (options.action === 'spawn') {
+            result = await spawnProcess(options);
+        } else if (options.action === 'eval') {
+            result = await evalCode(options);
+        } else {
+            result = await sendUnifiedMessage(options);
+        }
+        
+        const output = formatOutput(result, options);
+        console.log(output);
+        
+        // Exit cleanly to prevent hanging
+        process.exit(0);
+        
+    } catch (error) {
+        if (options.output === 'unity') {
+            const errorResponse = {
+                Messages: [],
+                Spawns: [],
+                Output: "",
+                Error: error.message,
+                uniqueID: options.uniqueID
+            };
+            console.log(JSON.stringify(errorResponse));
+        } else {
+            logError(options, '❌ Script failed:', error.message);
+        }
+        process.exit(1);
+    }
+}
+
+// Handle uncaught errors
+process.on('uncaughtException', (error) => {
+    console.error('💥 Uncaught exception:', error.message);
+    process.exit(1);
+});
+
+process.on('unhandledRejection', (error) => {
+    console.error('💥 Unhandled rejection:', error.message);
+    process.exit(1);
+});
+
+// Run the script
+main().catch(console.error);
